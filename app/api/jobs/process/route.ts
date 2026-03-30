@@ -409,27 +409,23 @@ async function processarJob(job: InvoiceJob) {
     },
   });
 
-  const resultado = await emitirNfseViaAutomacao(
-    {
-      cnpjEmpresa: cliente.cnpj,
-      senhaEmpresa: cliente.password,
-      competencyDate: payload.competencyDate,
-      tomadorDocumento: payload.tomadorDocumento,
-      taxCode: payload.taxCode,
-      serviceCity: payload.serviceCity,
-      serviceValue: payload.serviceValue,
-      serviceDescription: payload.serviceDescription,
-      cancelKey: payload.cancelKey || String(job.invoice_id),
-    } as any
-  );
+  const resultado = await emitirNfseViaAutomacao({
+    cnpjEmpresa: cliente.cnpj,
+    senhaEmpresa: cliente.password,
+    competencyDate: payload.competencyDate,
+    tomadorDocumento: payload.tomadorDocumento,
+    taxCode: payload.taxCode,
+    serviceCity: payload.serviceCity,
+    serviceValue: payload.serviceValue,
+    serviceDescription: payload.serviceDescription,
+  } as any);
 
   if (!resultado.success) {
     const mensagem = resultado.message || "Falha na automação.";
 
     if (
       mensagem.includes("EMISSAO_CANCELADA_USUARIO") ||
-      mensagem.includes("Emissão cancelada pelo usuário.") ||
-      resultado.canceled
+      mensagem.includes("Emissão cancelada pelo usuário.")
     ) {
       throw new Error("EMISSAO_CANCELADA_USUARIO");
     }
