@@ -47,6 +47,18 @@ type Nota = {
   client?: Cliente | null;
 };
 
+type NotaRaw = Omit<Nota, "client"> & {
+  client?: Cliente | Cliente[] | null;
+};
+
+function normalizarClient(client: Cliente | Cliente[] | null | undefined): Cliente | null {
+  if (!client) return null;
+  if (Array.isArray(client)) {
+    return client[0] || null;
+  }
+  return client;
+}
+
 export default function NotasEmitidasPage() {
   const router = useRouter();
 
@@ -141,7 +153,13 @@ export default function NotasEmitidasPage() {
         return;
       }
 
-      setNotas((notasData as Nota[]) || []);
+      const notasNormalizadas: Nota[] = ((notasData || []) as NotaRaw[]).map((nota) => ({
+        ...nota,
+        service_value: Number(nota.service_value || 0),
+        client: normalizarClient(nota.client),
+      }));
+
+      setNotas(notasNormalizadas);
       setLoading(false);
     } catch (error) {
       console.log("Erro inesperado:", error);

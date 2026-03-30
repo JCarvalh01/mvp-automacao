@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -103,6 +103,7 @@ export default function ClientesLotePage() {
   const router = useRouter();
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [loadingEmpresa, setLoadingEmpresa] = useState(true);
   const [loadingArquivo, setLoadingArquivo] = useState(false);
   const [importando, setImportando] = useState(false);
   const [preview, setPreview] = useState<LinhaPreview[]>([]);
@@ -110,7 +111,9 @@ export default function ClientesLotePage() {
   const [erroGeral, setErroGeral] = useState("");
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
 
-  useState(() => {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const empresaStorage = localStorage.getItem("partnerCompany");
 
     if (!empresaStorage) {
@@ -118,9 +121,17 @@ export default function ClientesLotePage() {
       return;
     }
 
-    const empresaConvertida: Empresa = JSON.parse(empresaStorage);
-    setEmpresa(empresaConvertida);
-  });
+    try {
+      const empresaConvertida: Empresa = JSON.parse(empresaStorage);
+      setEmpresa(empresaConvertida);
+    } catch (error) {
+      console.log("Erro ao carregar empresa da sessão:", error);
+      router.push("/login-empresa");
+      return;
+    } finally {
+      setLoadingEmpresa(false);
+    }
+  }, [router]);
 
   function baixarModelo() {
     const dadosModelo = [
@@ -244,6 +255,12 @@ export default function ClientesLotePage() {
       setMensagem("");
       setErroGeral("");
       setResultado(null);
+
+      if (typeof window === "undefined") {
+        setErroGeral("Não foi possível acessar a sessão da empresa.");
+        setImportando(false);
+        return;
+      }
 
       const empresaStorage = localStorage.getItem("partnerCompany");
 
@@ -417,7 +434,9 @@ export default function ClientesLotePage() {
           </h1>
 
           <p style={{ margin: 0, color: "#cbd5e1" }}>
-            {empresa?.name
+            {loadingEmpresa
+              ? "Carregando empresa..."
+              : empresa?.name
               ? `Importe vários clientes para a empresa: ${empresa.name}`
               : "Carregando empresa..."}
           </p>
@@ -647,10 +666,10 @@ export default function ClientesLotePage() {
                 <button
                   type="button"
                   onClick={importarClientes}
-                  disabled={importando || resumo.validas === 0}
+                  disabled={importando || resumo.validas === 0 || loadingEmpresa}
                   style={{
                     background:
-                      importando || resumo.validas === 0
+                      importando || resumo.validas === 0 || loadingEmpresa
                         ? "rgba(148, 163, 184, 0.3)"
                         : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                     color: "#ffffff",
@@ -658,10 +677,12 @@ export default function ClientesLotePage() {
                     padding: "14px 18px",
                     borderRadius: "12px",
                     cursor:
-                      importando || resumo.validas === 0 ? "not-allowed" : "pointer",
+                      importando || resumo.validas === 0 || loadingEmpresa
+                        ? "not-allowed"
+                        : "pointer",
                     fontWeight: "bold",
                     boxShadow:
-                      importando || resumo.validas === 0
+                      importando || resumo.validas === 0 || loadingEmpresa
                         ? "none"
                         : "0 10px 25px rgba(16,185,129,0.25)",
                   }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -18,7 +18,7 @@ type EmpresaParceira = {
   payment_status?: string | null;
 };
 
-export default function CadastroClientePage() {
+function CadastroClientePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -489,6 +489,14 @@ export default function CadastroClientePage() {
   );
 }
 
+export default function CadastroClientePage() {
+  return (
+    <Suspense fallback={<div style={loadingFallbackStyle}>Carregando cadastro...</div>}>
+      <CadastroClientePageContent />
+    </Suspense>
+  );
+}
+
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   position: "relative",
@@ -794,4 +802,17 @@ const saveButtonStyle: React.CSSProperties = {
   border: "none",
   fontWeight: 800,
   boxShadow: "0 12px 28px rgba(16,185,129,0.26)",
+};
+
+const loadingFallbackStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background:
+    "linear-gradient(135deg, #020617 0%, #081224 35%, #0f172a 65%, #071b34 100%)",
+  color: "#ffffff",
+  fontFamily: "Arial, sans-serif",
+  fontSize: "16px",
+  fontWeight: 700,
 };

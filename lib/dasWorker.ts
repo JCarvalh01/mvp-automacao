@@ -1,4 +1,4 @@
-import { consultarDasNoGoverno } from "./dasAutomation";
+import { consultarDas } from "./dasAutomation";
 
 type Job = {
   clientId: number;
@@ -8,7 +8,7 @@ type Job = {
   month: number;
 };
 
-const CONCURRENCY = 3; // quantos ao mesmo tempo
+const CONCURRENCY = 3;
 const RETRY_LIMIT = 2;
 
 export async function processarFila(jobs: Job[]) {
@@ -27,12 +27,12 @@ export async function processarFila(jobs: Job[]) {
         try {
           tentativa++;
 
-          resultado = await consultarDasNoGoverno({
+          resultado = await consultarDas({
+            cnpj: job.clientCnpj,
             clientId: job.clientId,
             clientName: job.clientName,
-            clientCnpj: job.clientCnpj,
-            competenciaAno: job.year,
-            competenciaMes: job.month,
+            targetYear: job.year,
+            targetMonth: job.month,
           });
 
           sucesso = true;
@@ -41,7 +41,14 @@ export async function processarFila(jobs: Job[]) {
             resultado = {
               success: false,
               status: "error",
-              governmentMessage: err.message,
+              governmentMessage: err?.message || "Erro ao consultar DAS.",
+              dueDate: null,
+              amount: null,
+              checkedAt: new Date().toISOString(),
+              cnpj: job.clientCnpj,
+              clientId: job.clientId,
+              clientName: job.clientName,
+              partnerCompanyId: null,
             };
           }
         }

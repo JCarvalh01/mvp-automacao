@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  consultarDasNoGoverno,
+  consultarDas,
   DasAutomationEntry,
   DasPaymentStatus,
 } from "@/lib/dasAutomation";
@@ -294,9 +294,13 @@ export async function processOneDasJob(jobId?: number): Promise<ProcessOneDasJob
       };
     }
 
-    const consultation = await consultarDasNoGoverno({
+    const consultation = await consultarDas({
       cnpj: client.cnpj,
-      year: locked.year,
+      targetYear: locked.year,
+      targetMonth: locked.month,
+      clientId: locked.client_id,
+      partnerCompanyId: locked.partner_company_id,
+      clientName: client.name,
     });
 
     if (!consultation.success) {
@@ -305,50 +309,29 @@ export async function processOneDasJob(jobId?: number): Promise<ProcessOneDasJob
         clientId: locked.client_id,
         year: locked.year,
         month: locked.month,
-        message: consultation.message,
+        message: consultation.governmentMessage,
       });
 
-      if (consultation.blocked) {
-        await retryJob(locked, consultation.message);
-
-        return {
-          ok: false,
-          processed: true,
-          jobId: locked.id,
-          message: `Job reprogramado por bloqueio: ${consultation.message}`,
-        };
-      }
-
-      await retryJob(locked, consultation.message);
+      await retryJob(locked, consultation.governmentMessage);
 
       return {
         ok: false,
         processed: true,
         jobId: locked.id,
-        message: `Job reprogramado por falha de leitura: ${consultation.message}`,
+        message: `Job reprogramado: ${consultation.governmentMessage}`,
       };
     }
 
-    await upsertDasPayments(
-      locked.partner_company_id,
-      locked.client_id,
-      consultation.entries
-    );
-
-    const targetMonthFound = consultation.entries.some(
-      (entry) => entry.year === locked.year && entry.month === locked.month
-    );
-
-    if (!targetMonthFound) {
-      await upsertUnavailablePayment({
-        partnerCompanyId: locked.partner_company_id,
-        clientId: locked.client_id,
-        year: locked.year,
-        month: locked.month,
-        message:
-          "A consulta anual foi concluída, mas a competência alvo não apareceu de forma confiável na tabela do governo.",
-      });
-    }
+    // Automação do DAS temporariamente desativada.
+    // Mantemos somente o registro da competência como indisponível/consultada,
+    // sem depender de entries anuais.
+    await upsertUnavailablePayment({
+      partnerCompanyId: locked.partner_company_id,
+      clientId: locked.client_id,
+      year: locked.year,
+      month: locked.month,
+      message: consultation.governmentMessage,
+    });
 
     await finishJob(locked.id, {
       status: "done",
@@ -367,7 +350,10 @@ export async function processOneDasJob(jobId?: number): Promise<ProcessOneDasJob
       ok: false,
       processed: false,
       jobId: jobId || null,
-      message: error instanceof Error ? error.message : "Erro inesperado no processador de DAS.",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Erro inesperado no processador de DAS.",
     };
   }
 }

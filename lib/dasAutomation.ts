@@ -20,6 +20,24 @@ export type ConsultarDasResult = {
   clientName?: string | null;
 };
 
+export type DasPaymentStatus =
+  | "paid"
+  | "pending"
+  | "overdue"
+  | "unavailable"
+  | "error";
+
+export type DasAutomationEntry = {
+  year: number;
+  month: number;
+  competencyLabel: string;
+  dueDate: string | null;
+  amount: number | null;
+  status: DasPaymentStatus;
+  paidAt: string | null;
+  governmentMessage: string;
+};
+
 export async function consultarDas(
   input: ConsultarDasInput
 ): Promise<ConsultarDasResult> {

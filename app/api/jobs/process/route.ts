@@ -512,9 +512,8 @@ export async function POST(_request: NextRequest) {
       const resultado = await processarJob(jobComTentativa);
 
       return NextResponse.json({
-        success: true,
-        processed: true,
         ...resultado,
+        processed: true,
       });
     } catch (error: any) {
       const mensagemErro = String(error?.message || "Erro ao processar job.");

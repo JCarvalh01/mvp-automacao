@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import ProtectedPageLoader from "@/components/ProtectedPageLoader";
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
@@ -188,11 +187,10 @@ function getStatusMeta(status?: string | null) {
 }
 
 export default function EmitirNotaPage() {
-  const searchParams = useSearchParams();
   const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  const clientIdFromUrl = searchParams.get("client_id") || "";
+  const [clientIdFromUrl, setClientIdFromUrl] = useState("");
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -207,13 +205,21 @@ export default function EmitirNotaPage() {
 
   const [ultimaNota, setUltimaNota] = useState<UltimaNota | null>(null);
 
-  const [clientId, setClientId] = useState(String(clientIdFromUrl || ""));
+  const [clientId, setClientId] = useState("");
   const [competencyDate, setCompetencyDate] = useState(getTodayLocalDate());
   const [serviceTaker, setServiceTaker] = useState("");
   const [taxCode, setTaxCode] = useState("");
   const [serviceCity, setServiceCity] = useState("São Paulo - SP");
   const [serviceValue, setServiceValue] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const clientIdParam = params.get("client_id") || "";
+    setClientIdFromUrl(clientIdParam);
+  }, []);
 
   useEffect(() => {
     if (!loadingAccess && authorized) {

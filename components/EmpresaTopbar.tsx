@@ -9,7 +9,7 @@ export default function EmpresaTopbar() {
   const pathname = usePathname();
 
   const session = getPartnerCompanySession();
-  const empresaNome = session?.partnerCompany?.name || "Empresa Parceira";
+  const empresaNome = session?.name || "Empresa Parceira";
 
   async function sair() {
     clearAllSessions();

@@ -111,9 +111,6 @@ export default function LoginPage() {
 
       clearAllSessions();
 
-      // =========================================================
-      // 1) TENTA LOGIN PELA TABELA USERS
-      // =========================================================
       const { data: usuario, error: usuarioError } = await supabase
         .from("users")
         .select("*")
@@ -146,13 +143,11 @@ export default function LoginPage() {
 
         saveUserSession(userSession);
 
-        // ADMIN
         if (tipoUsuarioNormalizado === "admin") {
           router.replace("/admin");
           return;
         }
 
-        // EMPRESA
         if (tipoUsuarioNormalizado === "partner_company") {
           const { data: empresas, error: empresaError } = await supabase
             .from("partner_companies")
@@ -199,7 +194,6 @@ export default function LoginPage() {
           return;
         }
 
-        // CLIENTE VIA USERS
         if (tipoUsuarioNormalizado === "client") {
           const { data: clientes, error: clienteError } = await supabase
             .from("clients")
@@ -248,7 +242,7 @@ export default function LoginPage() {
             password: cliente.password || null,
             client_type: cliente.client_type || undefined,
             mei_created_at: cliente.mei_created_at || null,
-            is_active: cliente.is_active !== false,
+            is_active: cliente.is_active ?? true,
             partner_company_id: cliente.partner_company_id ?? null,
           });
 
@@ -261,9 +255,6 @@ export default function LoginPage() {
         return;
       }
 
-      // =========================================================
-      // 2) FALLBACK: TENTA LOGIN DIRETO PELA TABELA CLIENTS
-      // =========================================================
       const { data: clientesDiretos, error: clienteDiretoError } = await supabase
         .from("clients")
         .select("*")
@@ -303,7 +294,7 @@ export default function LoginPage() {
         name: clienteDireto.name,
         email: clienteDireto.email || emailNormalizado,
         user_type: "client",
-        is_active: clienteDireto.is_active !== false,
+        is_active: clienteDireto.is_active ?? true,
       });
 
       saveClientSession({
@@ -316,7 +307,7 @@ export default function LoginPage() {
         password: clienteDireto.password || null,
         client_type: clienteDireto.client_type || undefined,
         mei_created_at: clienteDireto.mei_created_at || null,
-        is_active: clienteDireto.is_active !== false,
+        is_active: clienteDireto.is_active ?? true,
         partner_company_id: clienteDireto.partner_company_id ?? null,
       });
 
