@@ -1,10 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export default function HomePage() {
-  const whatsappLink =
-    "https://wa.me/5511982966310?text=Olá!%20Quero%20conhecer%20o%20sistema%20de%20emissão%20automática%20de%20notas.";
+  const [viewportWidth, setViewportWidth] = useState(1200);
+
+  useEffect(() => {
+    const atualizarTela = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    atualizarTela();
+    window.addEventListener("resize", atualizarTela);
+
+    return () => window.removeEventListener("resize", atualizarTela);
+  }, []);
+
+  const isMobile = viewportWidth <= 768;
 
   return (
     <main style={pageStyle}>
@@ -12,68 +25,142 @@ export default function HomePage() {
       <div style={glowMiddleStyle} />
       <div style={glowBottomStyle} />
 
-      <div style={containerStyle}>
-        <header style={headerStyle}>
+      <div
+        style={{
+          ...containerStyle,
+          padding: isMobile ? "18px 14px 42px" : "24px 20px 56px",
+        }}
+      >
+        <header
+          style={{
+            ...headerStyle,
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center",
+            gap: isMobile ? "12px" : "16px",
+            marginBottom: isMobile ? "22px" : "32px",
+          }}
+        >
           <div style={brandRowStyle}>
             <div style={brandBadgeStyle}>MVP_ Automação Fiscal</div>
           </div>
 
-          <nav style={navStyle}>
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noreferrer"
-              style={navWhatsappStyle}
+          <nav
+            style={{
+              ...navStyle,
+              width: isMobile ? "100%" : "auto",
+              flexDirection: isMobile ? "column" : "row",
+            }}
+          >
+            <Link
+              href="/login"
+              style={{
+                ...navLinkStyle,
+                width: isMobile ? "100%" : "auto",
+              }}
             >
-              Falar no WhatsApp
-            </a>
-
-            <Link href="/login" style={navLinkStyle}>
               Entrar
             </Link>
 
-            <Link href="/cadastro-cliente" style={navPrimaryStyle}>
-              Criar conta
+            <Link
+              href="/checkout?plano=full"
+              style={{
+                ...navPrimaryStyle,
+                width: isMobile ? "100%" : "auto",
+              }}
+            >
+              Assinar agora
             </Link>
           </nav>
         </header>
 
-        <section style={heroSectionStyle}>
-          <div style={heroContentStyle}>
+        <section
+          style={{
+            ...heroSectionStyle,
+            gridTemplateColumns: isMobile ? "1fr" : "1.15fr 0.85fr",
+            gap: isMobile ? "14px" : "18px",
+            marginBottom: isMobile ? "22px" : "26px",
+          }}
+        >
+          <div
+            style={{
+              ...heroContentStyle,
+              padding: isMobile ? "24px 18px" : "34px 30px",
+              borderRadius: isMobile ? "24px" : "30px",
+            }}
+          >
             <div style={heroPillStyle}>Plataforma fiscal moderna</div>
 
-            <h1 style={heroTitleStyle}>
+            <h1
+              style={{
+                ...heroTitleStyle,
+                fontSize: isMobile ? "34px" : "52px",
+                lineHeight: isMobile ? 1.08 : 1.02,
+              }}
+            >
               Emita notas fiscais
               <br />
               com mais rapidez, escala e organização
             </h1>
 
-            <p style={heroSubtitleStyle}>
+            <p
+              style={{
+                ...heroSubtitleStyle,
+                marginTop: isMobile ? "14px" : "18px",
+                fontSize: isMobile ? "15px" : "17px",
+                lineHeight: isMobile ? 1.7 : 1.8,
+              }}
+            >
               Automatize a emissão de NFS-e, centralize clientes, acompanhe o
               histórico e mantenha PDF e XML organizados em um ambiente
               profissional pensado para MEIs e empresas parceiras.
             </p>
 
-            <div style={heroActionsStyle}>
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noreferrer"
-                style={heroWhatsappButtonStyle}
+            <div
+              style={{
+                ...heroActionsStyle,
+                flexDirection: isMobile ? "column" : "row",
+                gap: isMobile ? "10px" : "12px",
+              }}
+            >
+              <Link
+                href="/checkout?plano=full"
+                style={{
+                  ...heroPrimaryButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
               >
-                Falar no WhatsApp
-              </a>
-
-              <Link href="/login" style={heroPrimaryButtonStyle}>
-                Entrar na plataforma
+                Assinar plano Full
               </Link>
 
-              <Link href="/cadastro-cliente" style={heroSecondaryButtonStyle}>
-                Criar conta
+              <Link
+                href="/checkout?plano=essencial"
+                style={{
+                  ...heroSecondaryButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
+              >
+                Começar com Essencial
+              </Link>
+
+              <Link
+                href="/login"
+                style={{
+                  ...heroGhostButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
+              >
+                Já tenho conta
               </Link>
             </div>
 
-            <div style={heroStatsGridStyle}>
+            <div
+              style={{
+                ...heroStatsGridStyle,
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                gap: isMobile ? "10px" : "12px",
+                marginTop: isMobile ? "18px" : "24px",
+              }}
+            >
               <div style={heroStatCardStyle}>
                 <span style={heroStatLabelStyle}>Emissão</span>
                 <strong style={heroStatValueStyle}>NFS-e automatizada</strong>
@@ -92,13 +179,24 @@ export default function HomePage() {
           </div>
 
           <div style={heroPanelWrapperStyle}>
-            <div style={heroPanelStyle}>
+            <div
+              style={{
+                ...heroPanelStyle,
+                padding: isMobile ? "20px 18px" : "24px",
+                borderRadius: isMobile ? "24px" : "30px",
+              }}
+            >
               <div style={panelTopStyle}>
                 <span style={panelMiniStyle}>Visão da plataforma</span>
-                <span style={panelStatusStyle}>Online</span>
+                <span style={panelStatusStyle}>Checkout ativo</span>
               </div>
 
-              <div style={panelCardGridStyle}>
+              <div
+                style={{
+                  ...panelCardGridStyle,
+                  gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                }}
+              >
                 <div style={panelCardStyle}>
                   <span style={panelCardLabelStyle}>Clientes</span>
                   <strong style={panelCardValueStyle}>Cadastro e gestão</strong>
@@ -110,8 +208,8 @@ export default function HomePage() {
                 </div>
 
                 <div style={panelCardStyle}>
-                  <span style={panelCardLabelStyle}>Operação</span>
-                  <strong style={panelCardValueStyle}>Fluxo centralizado</strong>
+                  <span style={panelCardLabelStyle}>Pagamentos</span>
+                  <strong style={panelCardValueStyle}>Mercado Pago</strong>
                 </div>
 
                 <div style={panelCardStyle}>
@@ -121,42 +219,98 @@ export default function HomePage() {
               </div>
 
               <div style={panelFooterStyle}>
-                Uma estrutura pronta para crescer com clientes diretos e empresas
-                parceiras, com foco em emissão fiscal automática e operação
-                organizada.
+                Escolha um plano, avance para o checkout e ative sua operação
+                fiscal com um fluxo mais direto, sem depender de contato manual
+                para começar.
               </div>
             </div>
           </div>
         </section>
 
-        <section style={featuresSectionStyle}>
+        <section
+          style={{
+            ...featuresSectionStyle,
+            marginBottom: isMobile ? "22px" : "26px",
+          }}
+        >
           <div style={sectionIntroStyle}>
             <div style={sectionBadgeStyle}>Recursos principais</div>
-            <h2 style={sectionTitleStyle}>Tudo em um só lugar</h2>
+            <h2
+              style={{
+                ...sectionTitleStyle,
+                fontSize: isMobile ? "28px" : "34px",
+                lineHeight: isMobile ? 1.15 : 1.2,
+              }}
+            >
+              Tudo em um só lugar
+            </h2>
           </div>
 
-          <div style={featuresGridStyle}>
-            <article style={featureCardStyle}>
+          <div
+            style={{
+              ...featuresGridStyle,
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+              gap: isMobile ? "12px" : "16px",
+            }}
+          >
+            <article
+              style={{
+                ...featureCardStyle,
+                padding: isMobile ? "18px" : "22px",
+              }}
+            >
               <span style={featureTagStyle}>Notas fiscais</span>
-              <h3 style={featureTitleStyle}>Emissão com mais agilidade</h3>
+              <h3
+                style={{
+                  ...featureTitleStyle,
+                  fontSize: isMobile ? "20px" : "22px",
+                }}
+              >
+                Emissão com mais agilidade
+              </h3>
               <p style={featureTextStyle}>
                 Organize a operação fiscal em um fluxo mais rápido, com emissão,
                 histórico e arquivos em um único ambiente.
               </p>
             </article>
 
-            <article style={featureCardStyle}>
+            <article
+              style={{
+                ...featureCardStyle,
+                padding: isMobile ? "18px" : "22px",
+              }}
+            >
               <span style={featureTagStyle}>Clientes</span>
-              <h3 style={featureTitleStyle}>Base centralizada</h3>
+              <h3
+                style={{
+                  ...featureTitleStyle,
+                  fontSize: isMobile ? "20px" : "22px",
+                }}
+              >
+                Base centralizada
+              </h3>
               <p style={featureTextStyle}>
                 Cadastre, acompanhe e visualize os dados dos clientes com mais
                 clareza e controle operacional.
               </p>
             </article>
 
-            <article style={featureCardStyle}>
+            <article
+              style={{
+                ...featureCardStyle,
+                padding: isMobile ? "18px" : "22px",
+              }}
+            >
               <span style={featureTagStyle}>Escalabilidade</span>
-              <h3 style={featureTitleStyle}>Pronto para crescer</h3>
+              <h3
+                style={{
+                  ...featureTitleStyle,
+                  fontSize: isMobile ? "20px" : "22px",
+                }}
+              >
+                Pronto para crescer
+              </h3>
               <p style={featureTextStyle}>
                 A MVP já nasce com estrutura para operar no modelo SaaS, tanto
                 para clientes diretos quanto para empresas parceiras.
@@ -168,73 +322,153 @@ export default function HomePage() {
         <section style={plansSectionStyle}>
           <div style={sectionIntroStyle}>
             <div style={sectionBadgeStyle}>Planos</div>
-            <h2 style={sectionTitleStyle}>Escolha o plano ideal para sua operação</h2>
-            <p style={plansSubtitleStyle}>
-              Estrutura simples para começar agora, validar rápido e escalar
-              conforme o uso do sistema.
+            <h2
+              style={{
+                ...sectionTitleStyle,
+                fontSize: isMobile ? "28px" : "34px",
+                lineHeight: isMobile ? 1.15 : 1.2,
+              }}
+            >
+              Escolha o plano ideal para sua operação
+            </h2>
+            <p
+              style={{
+                ...plansSubtitleStyle,
+                fontSize: isMobile ? "14px" : "15px",
+                lineHeight: isMobile ? 1.7 : 1.8,
+              }}
+            >
+              Assine online, avance para o checkout e ative o sistema conforme a
+              necessidade da sua operação.
             </p>
           </div>
 
-          <div style={plansGridStyle}>
-            <article style={planCardStyle}>
+          <div
+            style={{
+              ...plansGridStyle,
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+              gap: isMobile ? "14px" : "16px",
+            }}
+          >
+            <article
+              style={{
+                ...planCardStyle,
+                padding: isMobile ? "18px" : "24px",
+              }}
+            >
               <div style={planHeaderStyle}>
                 <span style={planTagStyle}>MEI</span>
-                <h3 style={planTitleStyle}>Essencial</h3>
-                <div style={planPriceStyle}>R$ 29,90</div>
-                <p style={planDescriptionStyle}>Entrada com excelente custo-benefício.</p>
+                <h3
+                  style={{
+                    ...planTitleStyle,
+                    fontSize: isMobile ? "21px" : "24px",
+                  }}
+                >
+                  Essencial
+                </h3>
+                <div
+                  style={{
+                    ...planPriceStyle,
+                    fontSize: isMobile ? "32px" : "38px",
+                    lineHeight: isMobile ? 1.05 : 1,
+                  }}
+                >
+                  R$ 29,90
+                </div>
+                <p style={planDescriptionStyle}>
+                  Entrada com excelente custo-benefício para quem quer começar
+                  com organização.
+                </p>
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Até 30 notas por mês</div>
-                <div style={planItemStyle}>✔ Emissão automática</div>
-                <div style={planItemStyle}>✔ PDFs e XMLs organizados</div>
-                <div style={planItemStyle}>✔ Acesso individual</div>
+                <div style={planItemStyle}>✔ Até 10 notas por mês</div>
+                <div style={planItemStyle}>✔ Emissão individual</div>
+                <div style={planItemStyle}>✔ Histórico básico</div>
+                <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noreferrer"
-                style={planButtonStyle}
-              >
-                Contratar pelo WhatsApp
-              </a>
+              <Link href="/checkout?plano=essencial" style={planButtonStyle}>
+                Assinar Essencial
+              </Link>
             </article>
 
-            <article style={planHighlightCardStyle}>
+            <article
+              style={{
+                ...planHighlightCardStyle,
+                padding: isMobile ? "18px" : "24px",
+              }}
+            >
               <div style={planHeaderStyle}>
-                <span style={planHighlightTagStyle}>MEI</span>
-                <h3 style={planTitleStyle}>Full</h3>
-                <div style={planPriceStyle}>R$ 59,90</div>
+                <span style={planHighlightTagStyle}>MAIS COMPLETO</span>
+                <h3
+                  style={{
+                    ...planTitleStyle,
+                    fontSize: isMobile ? "21px" : "24px",
+                  }}
+                >
+                  Full
+                </h3>
+                <div
+                  style={{
+                    ...planPriceStyle,
+                    fontSize: isMobile ? "32px" : "38px",
+                    lineHeight: isMobile ? 1.05 : 1,
+                  }}
+                >
+                  R$ 59,90
+                </div>
                 <p style={planDescriptionStyle}>
-                  Para quem quer operar com mais liberdade e escala.
+                  Para quem quer operar com mais liberdade, velocidade e escala
+                  no dia a dia fiscal.
                 </p>
               </div>
 
               <div style={planListStyle}>
                 <div style={planItemStyle}>✔ Notas ilimitadas</div>
                 <div style={planItemStyle}>✔ Emissão automática completa</div>
-                <div style={planItemStyle}>✔ PDFs e XMLs organizados</div>
-                <div style={planItemStyle}>✔ Mais liberdade operacional</div>
+                <div style={planItemStyle}>✔ Emissão em massa por planilha</div>
+                <div style={planItemStyle}>✔ Dashboard operacional completo</div>
+                <div style={planItemStyle}>✔ Controle centralizado de clientes</div>
+                <div style={planItemStyle}>✔ Histórico completo de emissões</div>
+                <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noreferrer"
-                style={planHighlightButtonStyle}
-              >
-                Contratar pelo WhatsApp
-              </a>
+              <Link href="/checkout?plano=full" style={planHighlightButtonStyle}>
+                Assinar Full
+              </Link>
             </article>
 
-            <article style={planCardStyle}>
+            <article
+              style={{
+                ...planCardStyle,
+                padding: isMobile ? "18px" : "24px",
+              }}
+            >
               <div style={planHeaderStyle}>
-                <span style={planTagStyle}>Empresas</span>
-                <h3 style={planTitleStyle}>Contábil</h3>
-                <div style={planPriceSmallStyle}>R$ 30 fixo + R$ 7 por cliente</div>
+                <span style={planTagStyle}>Empresas e escritórios</span>
+                <h3
+                  style={{
+                    ...planTitleStyle,
+                    fontSize: isMobile ? "21px" : "24px",
+                  }}
+                >
+                  Parceiro
+                </h3>
+                <div
+                  style={{
+                    ...planPriceSmallStyle,
+                    fontSize: isMobile ? "26px" : "28px",
+                    lineHeight: 1.2,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  R$ 30 fixo + R$ 7 por cliente
+                </div>
                 <p style={planDescriptionStyle}>
-                  Ideal para empresas parceiras e escritórios contábeis.
+                  Ideal para empresas parceiras e escritórios que gerenciam mais
+                  de um cliente.
                 </p>
               </div>
 
@@ -242,26 +476,37 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Múltiplos clientes</div>
                 <div style={planItemStyle}>✔ Emissão em massa</div>
                 <div style={planItemStyle}>✔ Dashboard operacional</div>
-                <div style={planItemStyle}>✔ Modelo escalável SaaS</div>
+                <div style={planItemStyle}>✔ Estrutura escalável SaaS</div>
               </div>
 
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noreferrer"
-                style={planButtonStyle}
-              >
-                Falar sobre plano contábil
-              </a>
+              <Link href="/checkout?plano=parceiro" style={planButtonStyle}>
+                Começar com Parceiro
+              </Link>
             </article>
           </div>
         </section>
 
-        <section style={salesSectionStyle}>
-          <div style={salesCardStyle}>
+        <section
+          style={{
+            ...salesSectionStyle,
+            marginBottom: isMobile ? "22px" : "26px",
+          }}
+        >
+          <div
+            style={{
+              ...salesCardStyle,
+              padding: isMobile ? "20px 18px" : "26px",
+            }}
+          >
             <div style={salesTextWrapStyle}>
               <span style={salesMiniStyle}>Por que escolher a plataforma?</span>
-              <h2 style={salesTitleStyle}>
+              <h2
+                style={{
+                  ...salesTitleStyle,
+                  fontSize: isMobile ? "28px" : "32px",
+                  lineHeight: isMobile ? 1.15 : 1.2,
+                }}
+              >
                 Menos operação manual, mais produtividade e mais controle
               </h2>
               <p style={salesTextStyle}>
@@ -271,7 +516,14 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div style={salesGridStyle}>
+            <div
+              style={{
+                ...salesGridStyle,
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                gap: isMobile ? "12px" : "14px",
+              }}
+            >
               <div style={salesItemStyle}>
                 <strong style={salesItemTitleStyle}>Mais rapidez</strong>
                 <p style={salesItemTextStyle}>
@@ -288,10 +540,10 @@ export default function HomePage() {
               </div>
 
               <div style={salesItemStyle}>
-                <strong style={salesItemTitleStyle}>Mais escala</strong>
+                <strong style={salesItemTitleStyle}>Ativação mais direta</strong>
                 <p style={salesItemTextStyle}>
-                  Estrutura pronta para atender desde MEIs até empresas com
-                  diversos clientes.
+                  O usuário escolhe o plano, segue para o checkout e entra no
+                  fluxo de ativação sem depender de atendimento manual.
                 </p>
               </div>
             </div>
@@ -299,32 +551,66 @@ export default function HomePage() {
         </section>
 
         <section style={ctaSectionStyle}>
-          <div style={ctaCardStyle}>
+          <div
+            style={{
+              ...ctaCardStyle,
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "stretch" : "center",
+              padding: isMobile ? "20px 18px" : "26px",
+            }}
+          >
             <div>
               <span style={ctaMiniStyle}>Comece agora</span>
-              <h2 style={ctaTitleStyle}>Fale comigo no WhatsApp e veja o sistema funcionando</h2>
+              <h2
+                style={{
+                  ...ctaTitleStyle,
+                  fontSize: isMobile ? "28px" : "32px",
+                  lineHeight: isMobile ? 1.15 : 1.2,
+                }}
+              >
+                Escolha seu plano e avance para o checkout
+              </h2>
               <p style={ctaTextStyle}>
                 Se você quer automatizar a emissão de notas e operar com mais
-                presença de produto, esse é o momento de começar.
+                presença de produto, este é o momento de ativar sua assinatura.
               </p>
             </div>
 
-            <div style={ctaButtonsStyle}>
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noreferrer"
-                style={ctaWhatsappButtonStyle}
+            <div
+              style={{
+                ...ctaButtonsStyle,
+                width: isMobile ? "100%" : "auto",
+                flexDirection: isMobile ? "column" : "row",
+              }}
+            >
+              <Link
+                href="/checkout?plano=essencial"
+                style={{
+                  ...ctaSecondaryButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
               >
-                Falar no WhatsApp
-              </a>
-
-              <Link href="/login" style={ctaPrimaryButtonStyle}>
-                Entrar
+                Assinar Essencial
               </Link>
 
-              <Link href="/cadastro-cliente" style={ctaSecondaryButtonStyle}>
-                Criar conta
+              <Link
+                href="/checkout?plano=full"
+                style={{
+                  ...ctaPrimaryButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
+              >
+                Assinar Full
+              </Link>
+
+              <Link
+                href="/checkout?plano=parceiro"
+                style={{
+                  ...ctaGhostBlueButtonStyle,
+                  width: isMobile ? "100%" : "auto",
+                }}
+              >
+                Plano Parceiro
               </Link>
             </div>
           </div>
@@ -448,19 +734,6 @@ const navPrimaryStyle: React.CSSProperties = {
   boxShadow: "0 12px 28px rgba(37,99,235,0.30)",
 };
 
-const navWhatsappStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: "14px",
-  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-  color: "#ffffff",
-  fontWeight: 700,
-  boxShadow: "0 12px 28px rgba(34,197,94,0.24)",
-};
-
 const heroSectionStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1.15fr 0.85fr",
@@ -543,17 +816,17 @@ const heroSecondaryButtonStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const heroWhatsappButtonStyle: React.CSSProperties = {
+const heroGhostButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   textDecoration: "none",
   padding: "15px 18px",
   borderRadius: "16px",
-  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-  color: "#ffffff",
-  fontWeight: 800,
-  boxShadow: "0 14px 30px rgba(34,197,94,0.24)",
+  background: "rgba(59,130,246,0.08)",
+  border: "1px solid rgba(59,130,246,0.18)",
+  color: "#dbeafe",
+  fontWeight: 700,
 };
 
 const heroStatsGridStyle: React.CSSProperties = {
@@ -999,19 +1272,6 @@ const ctaButtonsStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const ctaWhatsappButtonStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  padding: "14px 18px",
-  borderRadius: "16px",
-  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-  color: "#ffffff",
-  fontWeight: 800,
-  boxShadow: "0 14px 30px rgba(34,197,94,0.24)",
-};
-
 const ctaPrimaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -1035,5 +1295,18 @@ const ctaSecondaryButtonStyle: React.CSSProperties = {
   background: "rgba(15,23,42,0.88)",
   border: "1px solid rgba(148,163,184,0.18)",
   color: "#ffffff",
+  fontWeight: 700,
+};
+
+const ctaGhostBlueButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  padding: "14px 18px",
+  borderRadius: "16px",
+  background: "rgba(59,130,246,0.08)",
+  border: "1px solid rgba(59,130,246,0.18)",
+  color: "#dbeafe",
   fontWeight: 700,
 };

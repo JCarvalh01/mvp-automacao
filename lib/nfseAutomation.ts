@@ -20,6 +20,7 @@ type EmitirNotaResult = {
   nfseKey?: string | null;
   pdfPath?: string | null;
   xmlPath?: string | null;
+  canceled?: boolean;
 };
 
 function limparDocumento(valor: string) {
