@@ -409,17 +409,19 @@ async function processarJob(job: InvoiceJob) {
     },
   });
 
-  const resultado = await emitirNfseViaAutomacao({
-    cnpjEmpresa: cliente.cnpj,
-    senhaEmpresa: cliente.password,
-    competencyDate: payload.competencyDate,
-    tomadorDocumento: payload.tomadorDocumento,
-    taxCode: payload.taxCode,
-    serviceCity: payload.serviceCity,
-    serviceValue: payload.serviceValue,
-    serviceDescription: payload.serviceDescription,
-    cancelKey: payload.cancelKey || String(job.invoice_id),
-  });
+  const resultado = await emitirNfseViaAutomacao(
+    {
+      cnpjEmpresa: cliente.cnpj,
+      senhaEmpresa: cliente.password,
+      competencyDate: payload.competencyDate,
+      tomadorDocumento: payload.tomadorDocumento,
+      taxCode: payload.taxCode,
+      serviceCity: payload.serviceCity,
+      serviceValue: payload.serviceValue,
+      serviceDescription: payload.serviceDescription,
+      cancelKey: payload.cancelKey || String(job.invoice_id),
+    } as any
+  );
 
   if (!resultado.success) {
     const mensagem = resultado.message || "Falha na automação.";
