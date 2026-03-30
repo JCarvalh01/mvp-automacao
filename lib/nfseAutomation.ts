@@ -9,7 +9,7 @@ type EmitirNotaInput = {
   serviceCity: string;
   serviceValue: number;
   serviceDescription: string;
-  cancelKey?: string | null;
+  cancelKey?: string | null; // 🔥 ESSA LINHA É A CORREÇÃO
 };
 
 type EmitirNotaResult = {
