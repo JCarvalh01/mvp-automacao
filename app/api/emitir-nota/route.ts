@@ -1,0 +1,658 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+type EmitirNotaBody = {
+  invoiceId?: number | string;
+  clientId?: number | string;
+  partnerCompanyId?: number | string;
+  competencyDate?: string;
+  tomadorDocumento?: string;
+  taxCode?: string;
+  serviceCity?: string;
+  serviceValue?: number | string;
+  serviceDescription?: string;
+  cancelKey?: string | null;
+};
+
+type InvoiceRow = {
+  id: number;
+  client_id: number;
+  partner_company_id: number;
+  status: string | null;
+  pdf_url?: string | null;
+  xml_url?: string | null;
+  pdf_path?: string | null;
+  xml_path?: string | null;
+  nfse_key?: string | null;
+  error_message?: string | null;
+};
+
+type ClientRow = {
+  id: number;
+  cnpj: string | null;
+  password: string | null;
+  partner_company_id: number | null;
+  is_active: boolean | null;
+  is_blocked?: boolean | null;
+  plan_type?: string | null;
+  notes_limit?: number | null;
+};
+
+type PartnerCompanyRow = {
+  id: number;
+  is_blocked?: boolean | null;
+  payment_status?: string | null;
+};
+
+type JobRow = {
+  id: number;
+  status: string | null;
+};
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+
+function onlyDigits(value: string | number | null | undefined) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function toNumber(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : NaN;
+  }
+
+  const raw = String(value ?? "").trim();
+  if (!raw) return NaN;
+
+  const hasComma = raw.includes(",");
+  const hasDot = raw.includes(".");
+
+  let normalized = raw.replace(/\s/g, "");
+
+  if (hasComma && hasDot) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    normalized = normalized.replace(",", ".");
+  }
+
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function getMonthStartIso() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  return start.toISOString();
+}
+
+async function logJob(params: {
+  jobId: number;
+  invoiceId: number;
+  level?: "debug" | "info" | "warning" | "error";
+  message: string;
+  meta?: any;
+}) {
+  try {
+    await supabaseAdmin.from("invoice_job_logs").insert({
+      job_id: params.jobId,
+      invoice_id: params.invoiceId,
+      level: params.level || "info",
+      message: params.message,
+      meta: params.meta ?? null,
+    });
+  } catch (err) {
+    console.error("Erro ao salvar log do job:", err);
+  }
+}
+
+async function buscarInvoice(invoiceId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("invoices")
+    .select(`
+      id,
+      client_id,
+      partner_company_id,
+      status,
+      pdf_url,
+      xml_url,
+      pdf_path,
+      xml_path,
+      nfse_key,
+      error_message
+    `)
+    .eq("id", invoiceId)
+    .single();
+
+  return {
+    data: (data as InvoiceRow | null) || null,
+    error,
+  };
+}
+
+async function buscarCliente(clientId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("clients")
+    .select("id, cnpj, password, partner_company_id, is_active, is_blocked, plan_type, notes_limit")
+    .eq("id", clientId)
+    .single();
+
+  return {
+    data: (data as ClientRow | null) || null,
+    error,
+  };
+}
+
+async function buscarEmpresaParceira(partnerCompanyId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("partner_companies")
+    .select("id, is_blocked, payment_status")
+    .eq("id", partnerCompanyId)
+    .single();
+
+  return {
+    data: (data as PartnerCompanyRow | null) || null,
+    error,
+  };
+}
+
+async function buscarJobAtivo(invoiceId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .select("id, status")
+    .eq("invoice_id", invoiceId)
+    .in("status", ["queued", "processing"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    data: (data as JobRow | null) || null,
+    error,
+  };
+}
+
+async function marcarInvoicePending(invoiceId: number) {
+  return await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "pending",
+      error_message: null,
+    })
+    .eq("id", invoiceId);
+}
+
+async function marcarInvoiceErro(invoiceId: number, mensagem: string) {
+  return await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "error",
+      error_message: mensagem,
+    })
+    .eq("id", invoiceId);
+}
+
+async function contarNotasSuccessDoMes(clientId: number) {
+  const { count, error } = await supabaseAdmin
+    .from("invoices")
+    .select("*", { count: "exact", head: true })
+    .eq("client_id", clientId)
+    .eq("status", "success")
+    .gte("created_at", getMonthStartIso());
+
+  return {
+    count: count || 0,
+    error,
+  };
+}
+
+export async function POST(request: Request) {
+  let invoiceId: number | null = null;
+
+  try {
+    const body = (await request.json()) as EmitirNotaBody;
+
+    const invoiceIdParsed = toNumber(body.invoiceId);
+    const clientIdParsed = toNumber(body.clientId);
+    const partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
+    const serviceValueParsed = toNumber(body.serviceValue);
+
+    invoiceId = Number.isNaN(invoiceIdParsed) ? null : invoiceIdParsed;
+
+    const competencyDate = String(body.competencyDate ?? "").trim();
+    const tomadorDocumento = onlyDigits(body.tomadorDocumento);
+    const taxCode = String(body.taxCode ?? "").trim();
+    const serviceCity = String(body.serviceCity ?? "").trim();
+    const serviceDescription = String(body.serviceDescription ?? "").trim();
+    const cancelKey =
+      String(body.cancelKey ?? "").trim() || (invoiceId ? String(invoiceId) : null);
+
+    if (
+      !invoiceId ||
+      Number.isNaN(clientIdParsed) ||
+      Number.isNaN(partnerCompanyIdParsed) ||
+      !competencyDate ||
+      !tomadorDocumento ||
+      !taxCode ||
+      !serviceCity ||
+      !serviceDescription ||
+      Number.isNaN(serviceValueParsed) ||
+      serviceValueParsed <= 0
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Dados obrigatórios inválidos ou não enviados.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: invoiceAtual, error: invoiceError } = await buscarInvoice(invoiceId);
+
+    if (invoiceError || !invoiceAtual) {
+      console.error("Invoice não encontrada:", invoiceError);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Registro da nota não encontrado.",
+        },
+        { status: 404 }
+      );
+    }
+
+    const invoice = invoiceAtual;
+
+    if (invoice.status === "success") {
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Nota já emitida anteriormente.",
+          invoice: {
+            id: invoice.id,
+            status: invoice.status,
+            nfse_key: invoice.nfse_key,
+            pdf_url: invoice.pdf_url,
+            xml_url: invoice.xml_url,
+            pdf_path: invoice.pdf_path,
+            xml_path: invoice.xml_path,
+            error_message: invoice.error_message,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
+    if (Number(invoice.client_id) !== clientIdParsed) {
+      console.error("Invoice não pertence ao cliente informado.", {
+        invoiceId,
+        clientIdRecebido: clientIdParsed,
+        clientIdInvoice: invoice.client_id,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "A nota não pertence ao cliente informado.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (Number(invoice.partner_company_id) !== partnerCompanyIdParsed) {
+      console.error("Invoice não pertence à empresa informada.", {
+        invoiceId,
+        partnerCompanyIdRecebido: partnerCompanyIdParsed,
+        partnerCompanyIdInvoice: invoice.partner_company_id,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "A nota não pertence à empresa informada.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: clienteAtual, error: clientError } = await buscarCliente(clientIdParsed);
+
+    if (clientError || !clienteAtual) {
+      console.error("Cliente não encontrado:", clientError);
+
+      await marcarInvoiceErro(invoiceId, "Cliente não encontrado.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Cliente não encontrado.",
+        },
+        { status: 404 }
+      );
+    }
+
+    const cliente = clienteAtual;
+
+    if (Number(cliente.partner_company_id) !== partnerCompanyIdParsed) {
+      await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Cliente não pertence à empresa informada.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!cliente.is_active) {
+      await marcarInvoiceErro(invoiceId, "Cliente inativo.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Cliente inativo.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // =========================================================
+    // REGRA: CLIENTE DE EMPRESA PARCEIRA DEPENDE DA EMPRESA
+    // =========================================================
+    if (cliente.partner_company_id) {
+      const { data: empresaAtual, error: empresaError } =
+        await buscarEmpresaParceira(cliente.partner_company_id);
+
+      if (empresaError || !empresaAtual) {
+        console.error("Empresa parceira não encontrada:", empresaError);
+
+        await marcarInvoiceErro(invoiceId, "Empresa não encontrada.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Empresa não encontrada.",
+          },
+          { status: 404 }
+        );
+      }
+
+      const empresa = empresaAtual;
+      const paymentStatus = String(empresa.payment_status || "").trim().toLowerCase();
+
+      if (empresa.is_blocked || paymentStatus !== "paid") {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Empresa bloqueada por falta de pagamento."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "A empresa responsável está com pagamento pendente.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // =========================================================
+    // REGRA: CLIENTE DIRETO USA BLOQUEIO E PLANO PRÓPRIOS
+    // =========================================================
+    if (!cliente.partner_company_id && cliente.is_blocked) {
+      await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Seu acesso está bloqueado por falta de pagamento.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (!onlyDigits(cliente.cnpj)) {
+      await marcarInvoiceErro(invoiceId, "CNPJ do cliente não encontrado.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "CNPJ do cliente não encontrado.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!String(cliente.password || "").trim()) {
+      await marcarInvoiceErro(invoiceId, "Senha do Emissor Nacional não cadastrada.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Senha do Emissor Nacional não cadastrada.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const planType = String(cliente.plan_type || "essencial").trim().toLowerCase();
+    const notesLimit =
+      typeof cliente.notes_limit === "number" ? cliente.notes_limit : null;
+
+    // =========================================================
+    // REGRA: LIMITE DE PLANO SÓ VALE PARA CLIENTE DIRETO
+    // =========================================================
+    if (!cliente.partner_company_id && planType === "essencial" && notesLimit !== null && notesLimit > 0) {
+      const { count: totalNotasMes, error: countError } =
+        await contarNotasSuccessDoMes(clientIdParsed);
+
+      if (countError) {
+        console.error("Erro ao contar notas do mês:", countError);
+
+        await marcarInvoiceErro(
+          invoiceId,
+          "Não foi possível validar o limite mensal do plano."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Não foi possível validar o limite mensal do plano.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (totalNotasMes >= notesLimit) {
+        await marcarInvoiceErro(invoiceId, "Limite de notas do plano atingido.");
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Limite mensal de notas atingido no plano Essencial.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const { data: jobAtivo } = await buscarJobAtivo(invoiceId);
+
+    if (jobAtivo) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: "A emissão desta nota já está em processamento.",
+          jobId: jobAtivo.id,
+          status: jobAtivo.status,
+          invoice: {
+            id: invoice.id,
+            status: invoice.status || "pending",
+            nfse_key: invoice.nfse_key,
+            pdf_url: invoice.pdf_url,
+            xml_url: invoice.xml_url,
+            pdf_path: invoice.pdf_path,
+            xml_path: invoice.xml_path,
+            error_message: invoice.error_message,
+          },
+        },
+        { status: 200 }
+      );
+    }
+
+    const { error: pendingError } = await marcarInvoicePending(invoiceId);
+
+    if (pendingError) {
+      console.error("Erro ao marcar invoice como pending:", pendingError);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Não foi possível preparar a nota para emissão.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const jobPayload = {
+      invoiceId,
+      clientId: clientIdParsed,
+      partnerCompanyId: partnerCompanyIdParsed,
+      cnpjEmpresa: onlyDigits(cliente.cnpj),
+      senhaEmpresa: String(cliente.password || "").trim(),
+      competencyDate,
+      tomadorDocumento,
+      taxCode,
+      serviceCity,
+      serviceValue: serviceValueParsed,
+      serviceDescription,
+      cancelKey,
+    };
+
+    const { data: novoJob, error: jobError } = await supabaseAdmin
+      .from("invoice_jobs")
+      .insert({
+        invoice_id: invoiceId,
+        partner_company_id: partnerCompanyIdParsed,
+        client_id: clientIdParsed,
+        job_type: "emit_nfse",
+        status: "queued",
+        attempts: 0,
+        max_attempts: 3,
+        locked_at: null,
+        started_at: null,
+        finished_at: null,
+        cancel_requested: false,
+        cancel_requested_at: null,
+        error_message: null,
+        payload: jobPayload,
+        result: null,
+      })
+      .select("id")
+      .single();
+
+    if (jobError || !novoJob) {
+      console.error("Erro ao criar job:", jobError);
+
+      await marcarInvoiceErro(invoiceId, "Erro ao criar job da emissão.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Não foi possível iniciar a emissão da nota.",
+        },
+        { status: 500 }
+      );
+    }
+
+    await logJob({
+      jobId: Number(novoJob.id),
+      invoiceId,
+      level: "info",
+      message: "Job enfileirado para emissão da NFS-e.",
+      meta: {
+        competencyDate,
+        tomadorDocumento,
+        taxCode,
+        serviceCity,
+        serviceValue: serviceValueParsed,
+        cancelKey,
+        planType,
+        notesLimit,
+        isBlocked: Boolean(cliente.is_blocked),
+        partnerCompanyId: cliente.partner_company_id,
+      },
+    });
+
+    console.log("=== JOB ENFILEIRADO ===");
+    console.log({
+      jobId: novoJob.id,
+      invoiceId,
+      clientId: clientIdParsed,
+      partnerCompanyId: partnerCompanyIdParsed,
+      valor: serviceValueParsed,
+      cidade: serviceCity,
+      competencia: competencyDate,
+      planType,
+      notesLimit,
+      isBlocked: Boolean(cliente.is_blocked),
+      partnerCompanyIdCliente: cliente.partner_company_id,
+    });
+
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.APP_URL ||
+        new URL(request.url).origin;
+
+      fetch(`${baseUrl}/api/jobs/process`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }).catch((err) => {
+        console.error("Erro ao disparar processamento imediato do job:", err);
+      });
+    } catch (err) {
+      console.error("Erro ao montar disparo imediato do job:", err);
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Emissão iniciada com sucesso.",
+        jobId: Number(novoJob.id),
+        status: "queued",
+        invoice: {
+          id: invoice.id,
+          status: "pending",
+          nfse_key: null,
+          pdf_url: null,
+          xml_url: null,
+          pdf_path: null,
+          xml_path: null,
+          error_message: null,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Erro geral em /api/emitir-nota:", error);
+
+    if (invoiceId) {
+      await marcarInvoiceErro(
+        invoiceId,
+        error?.message || "Erro inesperado ao iniciar a emissão."
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: error?.message || "Erro inesperado ao iniciar a emissão.",
+      },
+      { status: 500 }
+    );
+  }
+}
