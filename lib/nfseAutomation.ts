@@ -9,6 +9,7 @@ type EmitirNotaInput = {
   serviceCity: string;
   serviceValue: number;
   serviceDescription: string;
+  cancelKey?: string | null;
 };
 
 type EmitirNotaResult = {
