@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -220,8 +222,8 @@ export default function HomePage() {
 
               <div style={panelFooterStyle}>
                 Escolha um plano, avance para o checkout e ative sua operação
-                fiscal com um fluxo mais direto, sem depender de contato manual
-                para começar.
+                fiscal com um fluxo mais direto. Para empresas e escritórios, a
+                ativação é feita pelo administrador.
               </div>
             </div>
           </div>
@@ -428,7 +430,6 @@ export default function HomePage() {
               <div style={planListStyle}>
                 <div style={planItemStyle}>✔ Notas ilimitadas</div>
                 <div style={planItemStyle}>✔ Emissão automática completa</div>
-                <div style={planItemStyle}>✔ Emissão em massa por planilha</div>
                 <div style={planItemStyle}>✔ Dashboard operacional completo</div>
                 <div style={planItemStyle}>✔ Controle centralizado de clientes</div>
                 <div style={planItemStyle}>✔ Histórico completo de emissões</div>
@@ -462,13 +463,14 @@ export default function HomePage() {
                     fontSize: isMobile ? "26px" : "28px",
                     lineHeight: 1.2,
                     wordBreak: "break-word",
+                    color: "#bfdbfe",
                   }}
                 >
-                  R$ 30 fixo + R$ 7 por cliente
+                  Sob consulta
                 </div>
                 <p style={planDescriptionStyle}>
                   Ideal para empresas parceiras e escritórios que gerenciam mais
-                  de um cliente.
+                  de um cliente. A ativação é feita pelo administrador.
                 </p>
               </div>
 
@@ -479,9 +481,14 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Estrutura escalável SaaS</div>
               </div>
 
-              <Link href="/checkout?plano=parceiro" style={planButtonStyle}>
-                Começar com Parceiro
-              </Link>
+              <a
+                href="https://wa.me/5511982966310"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={planButtonStyle}
+              >
+                Falar com o administrador
+              </a>
             </article>
           </div>
         </section>
@@ -543,7 +550,8 @@ export default function HomePage() {
                 <strong style={salesItemTitleStyle}>Ativação mais direta</strong>
                 <p style={salesItemTextStyle}>
                   O usuário escolhe o plano, segue para o checkout e entra no
-                  fluxo de ativação sem depender de atendimento manual.
+                  fluxo de ativação sem depender de atendimento manual. Para
+                  empresas parceiras, o contato inicial passa pelo administrador.
                 </p>
               </div>
             </div>
@@ -573,6 +581,8 @@ export default function HomePage() {
               <p style={ctaTextStyle}>
                 Se você quer automatizar a emissão de notas e operar com mais
                 presença de produto, este é o momento de ativar sua assinatura.
+                Para empresas e escritórios, a criação é feita pelo
+                administrador.
               </p>
             </div>
 
@@ -603,15 +613,17 @@ export default function HomePage() {
                 Assinar Full
               </Link>
 
-              <Link
-                href="/checkout?plano=parceiro"
+              <a
+                href="https://wa.me/5511982966310"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
                   ...ctaGhostBlueButtonStyle,
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Plano Parceiro
-              </Link>
+                Falar com o administrador
+              </a>
             </div>
           </div>
         </section>
