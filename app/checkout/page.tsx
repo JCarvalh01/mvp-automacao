@@ -13,10 +13,17 @@ import { initMercadoPago, Payment } from "@mercadopago/sdk-react";
 
 type Plano = "essencial" | "full";
 
-type PreferenceResponse = {
-  success: boolean;
-  message?: string;
-  preference_id?: string;
+type PaymentSubmitData = {
+  formData: {
+    token?: string;
+    issuer_id?: string;
+    payment_method_id?: string;
+    transaction_amount?: number;
+    installments?: number;
+    payer?: {
+      email?: string;
+    };
+  };
 };
 
 const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY || "";
@@ -35,6 +42,11 @@ function CheckoutContent() {
   const [loading, setLoading] = useState(false);
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+  const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
+  const [pixCode, setPixCode] = useState<string | null>(null);
+  const [boletoUrl, setBoletoUrl] = useState<string | null>(null);
+  const [processandoPagamento, setProcessandoPagamento] = useState(false);
 
   useEffect(() => {
     if (planoParam === "essencial" || planoParam === "full") {
@@ -70,7 +82,11 @@ function CheckoutContent() {
     try {
       setLoading(true);
       setErro("");
+      setSucesso("");
       setPreferenceId(null);
+      setPixQrBase64(null);
+      setPixCode(null);
+      setBoletoUrl(null);
 
       if (!publicKey) {
         setErro("A chave pública do Mercado Pago não está configurada.");
@@ -103,7 +119,7 @@ function CheckoutContent() {
         }),
       });
 
-      const result: PreferenceResponse = await response.json();
+      const result = await response.json();
 
       if (!response.ok || !result?.success || !result?.preference_id) {
         setErro(result?.message || "Erro ao iniciar pagamento.");
@@ -117,6 +133,80 @@ function CheckoutContent() {
       console.log(error);
       setErro("Erro inesperado ao iniciar pagamento.");
       setLoading(false);
+    }
+  }
+
+  async function processarPagamento(data: PaymentSubmitData) {
+    try {
+      setProcessandoPagamento(true);
+      setErro("");
+      setSucesso("");
+      setPixQrBase64(null);
+      setPixCode(null);
+      setBoletoUrl(null);
+
+      const client = getClientSession();
+
+      if (!client?.id) {
+        setErro("Faça login antes de continuar.");
+        setProcessandoPagamento(false);
+        return;
+      }
+
+      if (!plano || !info) {
+        setErro("Plano inválido.");
+        setProcessandoPagamento(false);
+        return;
+      }
+
+      const response = await fetch("/api/mercadopago/processar-pagamento", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...data.formData,
+          clientId: client.id,
+          plano,
+          transaction_amount: info.precoNumero,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result?.success) {
+        setErro(result?.message || "Não foi possível processar o pagamento.");
+        setProcessandoPagamento(false);
+        return;
+      }
+
+      const status = String(result?.status || "").toLowerCase();
+
+      if (status === "approved") {
+        setSucesso("Pagamento aprovado com sucesso. Seu plano já foi liberado.");
+      } else if (status === "pending") {
+        if (result?.qr_code_base64 || result?.qr_code) {
+          setSucesso("Pix gerado com sucesso. Finalize o pagamento para liberar seu plano.");
+          setPixQrBase64(result.qr_code_base64 || null);
+          setPixCode(result.qr_code || null);
+        } else if (result?.ticket_url) {
+          setSucesso("Boleto gerado com sucesso. Finalize o pagamento para liberar seu plano.");
+          setBoletoUrl(result.ticket_url);
+        } else {
+          setSucesso("Pagamento pendente. Assim que for confirmado, seu plano será liberado.");
+        }
+      } else {
+        setErro(
+          result?.status_detail ||
+            "Pagamento não aprovado. Tente novamente ou use outro método."
+        );
+      }
+
+      setProcessandoPagamento(false);
+    } catch (error) {
+      console.log(error);
+      setErro("Erro inesperado ao processar o pagamento.");
+      setProcessandoPagamento(false);
     }
   }
 
@@ -170,7 +260,46 @@ function CheckoutContent() {
             </button>
           )}
 
+          {processandoPagamento && (
+            <div style={warningBoxStyle}>Processando pagamento...</div>
+          )}
+
           {erro && <div style={errorBoxStyle}>{erro}</div>}
+
+          {sucesso && <div style={successBoxStyle}>{sucesso}</div>}
+
+          {pixQrBase64 && (
+            <div style={pixBoxStyle}>
+              <strong style={pixTitleStyle}>QR Code Pix</strong>
+              <img
+                src={`data:image/png;base64,${pixQrBase64}`}
+                alt="QR Code Pix"
+                style={pixImageStyle}
+              />
+            </div>
+          )}
+
+          {pixCode && (
+            <div style={copyBoxStyle}>
+              <strong style={copyTitleStyle}>Código Pix</strong>
+              <textarea
+                readOnly
+                value={pixCode}
+                style={copyTextareaStyle}
+              />
+            </div>
+          )}
+
+          {boletoUrl && (
+            <a
+              href={boletoUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={boletoButtonStyle}
+            >
+              Abrir boleto
+            </a>
+          )}
 
           <div style={infoBoxStyle}>
             O pagamento será processado de forma segura pelo Mercado Pago dentro
@@ -221,8 +350,8 @@ function CheckoutContent() {
                 onReady={() => {
                   console.log("Payment Brick pronto.");
                 }}
-                onSubmit={async () => {
-                  console.log("Pagamento enviado pelo Brick.");
+                onSubmit={async (data: PaymentSubmitData) => {
+                  await processarPagamento(data);
                 }}
                 onError={(error) => {
                   console.log("Erro no Payment Brick:", error);
@@ -444,6 +573,85 @@ const errorBoxStyle: CSSProperties = {
   color: "#fee2e2",
   fontSize: "14px",
   fontWeight: 700,
+};
+
+const successBoxStyle: CSSProperties = {
+  marginTop: "14px",
+  padding: "12px 14px",
+  borderRadius: "14px",
+  background: "rgba(16,185,129,0.18)",
+  border: "1px solid rgba(16,185,129,0.32)",
+  color: "#d1fae5",
+  fontSize: "14px",
+  fontWeight: 700,
+};
+
+const warningBoxStyle: CSSProperties = {
+  marginTop: "14px",
+  padding: "12px 14px",
+  borderRadius: "14px",
+  background: "rgba(245,158,11,0.16)",
+  border: "1px solid rgba(245,158,11,0.28)",
+  color: "#fde68a",
+  fontSize: "14px",
+  fontWeight: 700,
+};
+
+const pixBoxStyle: CSSProperties = {
+  marginTop: "16px",
+  padding: "16px",
+  borderRadius: "16px",
+  background: "rgba(255,255,255,0.98)",
+  color: "#0f172a",
+};
+
+const pixTitleStyle: CSSProperties = {
+  display: "block",
+  marginBottom: "12px",
+  fontSize: "15px",
+};
+
+const pixImageStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: "260px",
+  display: "block",
+  margin: "0 auto",
+};
+
+const copyBoxStyle: CSSProperties = {
+  marginTop: "16px",
+  padding: "16px",
+  borderRadius: "16px",
+  background: "rgba(255,255,255,0.98)",
+  color: "#0f172a",
+};
+
+const copyTitleStyle: CSSProperties = {
+  display: "block",
+  marginBottom: "10px",
+  fontSize: "15px",
+};
+
+const copyTextareaStyle: CSSProperties = {
+  width: "100%",
+  minHeight: "110px",
+  borderRadius: "12px",
+  border: "1px solid #cbd5e1",
+  padding: "12px",
+  fontSize: "13px",
+  resize: "vertical",
+};
+
+const boletoButtonStyle: CSSProperties = {
+  display: "block",
+  marginTop: "16px",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  background: "#fff",
+  color: "#0f172a",
+  fontWeight: 800,
+  textAlign: "center",
+  textDecoration: "none",
 };
 
 const errorTextStyle: CSSProperties = {
