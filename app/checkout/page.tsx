@@ -35,7 +35,6 @@ function CheckoutContent() {
   const [loading, setLoading] = useState(false);
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [erro, setErro] = useState("");
-  const [brickReady, setBrickReady] = useState(false);
 
   useEffect(() => {
     if (planoParam === "essencial" || planoParam === "full") {
@@ -72,7 +71,6 @@ function CheckoutContent() {
       setLoading(true);
       setErro("");
       setPreferenceId(null);
-      setBrickReady(false);
 
       if (!publicKey) {
         setErro("A chave pública do Mercado Pago não está configurada.");
@@ -114,7 +112,6 @@ function CheckoutContent() {
       }
 
       setPreferenceId(result.preference_id);
-      setBrickReady(true);
       setLoading(false);
     } catch (error) {
       console.log(error);
@@ -136,20 +133,31 @@ function CheckoutContent() {
 
   return (
     <main style={pageStyle}>
-      <div style={wrapStyle}>
-        <section style={leftCardStyle}>
+      <div className="checkout-wrap-responsive" style={wrapStyle}>
+        <section className="checkout-left-responsive" style={leftCardStyle}>
+          <button
+            onClick={() => window.history.back()}
+            style={backButtonStyle}
+          >
+            ← Voltar
+          </button>
+
           <span style={tagStyle}>Checkout seguro</span>
-          <h1 style={titleStyle}>Confirmar assinatura</h1>
-          <p style={subtitleStyle}>
+          <h1 className="checkout-title-responsive" style={titleStyle}>
+            Confirmar assinatura
+          </h1>
+          <p className="checkout-subtitle-responsive" style={subtitleStyle}>
             Finalize sua assinatura sem sair da MVP_ Automação Fiscal.
           </p>
 
-          <div style={planBoxStyle}>
+          <div className="checkout-planbox-responsive" style={planBoxStyle}>
             <div>
               <h2 style={planTitleStyle}>{info.nome}</h2>
               <p style={planDescStyle}>{info.descricao}</p>
             </div>
-            <strong style={priceStyle}>{info.precoTexto}</strong>
+            <strong className="checkout-price-responsive" style={priceStyle}>
+              {info.precoTexto}
+            </strong>
           </div>
 
           {!preferenceId && (
@@ -170,7 +178,7 @@ function CheckoutContent() {
           </div>
         </section>
 
-        <section style={rightCardStyle}>
+        <section className="checkout-right-responsive" style={rightCardStyle}>
           <div style={summaryHeaderStyle}>
             <h3 style={summaryTitleStyle}>Resumo</h3>
             <p style={summaryTextStyle}>Revise seu plano antes de pagar.</p>
@@ -191,7 +199,7 @@ function CheckoutContent() {
             <p style={summaryValueStyle}>{info.descricao}</p>
           </div>
 
-          {brickReady && preferenceId ? (
+          {preferenceId ? (
             <div style={brickContainerStyle}>
               <Payment
                 initialization={{
@@ -201,11 +209,11 @@ function CheckoutContent() {
                 customization={{
                   paymentMethods: {
                     creditCard: "all",
-                    debitCard: "all",
+                    debitCard: "none",
                     ticket: "all",
                     bankTransfer: "all",
-                    atm: "all",
-                    mercadoPago: "all",
+                    atm: "none",
+                    mercadoPago: "none",
                   },
                   visual: {
                     style: {
@@ -233,6 +241,41 @@ function CheckoutContent() {
           )}
         </section>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 980px) {
+          .checkout-wrap-responsive {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .checkout-left-responsive,
+          .checkout-right-responsive {
+            padding: 18px !important;
+            border-radius: 22px !important;
+          }
+
+          .checkout-title-responsive {
+            font-size: 34px !important;
+            line-height: 1.05 !important;
+          }
+
+          .checkout-subtitle-responsive {
+            font-size: 15px !important;
+            line-height: 1.6 !important;
+          }
+
+          .checkout-planbox-responsive {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+
+          .checkout-price-responsive {
+            white-space: normal !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
@@ -265,7 +308,7 @@ const wrapStyle: CSSProperties = {
   width: "100%",
   maxWidth: "1180px",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.2fr)",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: "22px",
 };
 
@@ -294,6 +337,17 @@ const rightCardStyle: CSSProperties = {
   borderRadius: "24px",
   color: "#0f172a",
   boxShadow: "0 20px 50px rgba(0,0,0,0.16)",
+};
+
+const backButtonStyle: CSSProperties = {
+  marginBottom: "16px",
+  background: "transparent",
+  border: "1px solid rgba(148,163,184,0.3)",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  color: "#cbd5e1",
+  cursor: "pointer",
+  fontWeight: 700,
 };
 
 const tagStyle: CSSProperties = {

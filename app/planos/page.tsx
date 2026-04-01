@@ -1,14 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { getClientSession } from "@/lib/session";
-
-type CheckoutResponse = {
-  success: boolean;
-  init_point?: string;
-  sandbox_init_point?: string;
-  message?: string;
-};
 
 export default function PlanosPage() {
   const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
@@ -56,30 +49,10 @@ export default function PlanosPage() {
         return;
       }
 
-      const response = await fetch("/api/mercadopago/criar-preferencia", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          clientId: clientSession.id,
-          plano,
-        }),
-      });
-
-      const result: CheckoutResponse = await response.json();
-
-      if (!response.ok || !result.success || !result.init_point) {
-        setMensagem(result.message || "Não foi possível iniciar o pagamento.");
-        setTipoMensagem("erro");
-        setLoadingPlano("");
-        return;
-      }
-
       window.location.href = `/checkout?plano=${plano}`;
     } catch (error) {
-      console.log("Erro ao iniciar pagamento:", error);
-      setMensagem("Erro inesperado ao iniciar pagamento.");
+      console.log("Erro ao iniciar checkout:", error);
+      setMensagem("Erro inesperado ao iniciar checkout.");
       setTipoMensagem("erro");
       setLoadingPlano("");
     }
@@ -89,9 +62,11 @@ export default function PlanosPage() {
     <main style={pageStyle}>
       <div style={containerStyle}>
         <section style={heroStyle}>
-          <h1 style={titleStyle}>Escolha o plano ideal para sua operação</h1>
+          <h1 className="planos-title-responsive" style={titleStyle}>
+            Escolha o plano ideal para sua operação
+          </h1>
 
-          <p style={subtitleStyle}>
+          <p className="planos-subtitle-responsive" style={subtitleStyle}>
             Assine online, avance para o checkout e ative o sistema conforme a
             necessidade da sua operação.
           </p>
@@ -111,8 +86,8 @@ export default function PlanosPage() {
           </div>
         )}
 
-        <section style={plansGridStyle}>
-          <div style={cardStyle}>
+        <section className="planos-grid-responsive" style={plansGridStyle}>
+          <div className="planos-card-responsive" style={cardStyle}>
             <div style={pillRowStyle}>
               <span style={topPillStyle}>MEI</span>
             </div>
@@ -120,7 +95,8 @@ export default function PlanosPage() {
             <h2 style={planTitleStyle}>Essencial</h2>
             <p style={priceStyle}>R$ 29,90</p>
             <p style={planTextStyle}>
-              Entrada com excelente custo-benefício para quem quer começar com organização.
+              Entrada com excelente custo-benefício para quem quer começar com
+              organização.
             </p>
 
             <ul style={listStyle}>
@@ -145,7 +121,7 @@ export default function PlanosPage() {
             </button>
           </div>
 
-          <div style={cardFeaturedStyle}>
+          <div className="planos-card-responsive" style={cardFeaturedStyle}>
             <div style={pillRowStyle}>
               <span style={topPillFeaturedStyle}>MAIS COMPLETO</span>
             </div>
@@ -153,7 +129,8 @@ export default function PlanosPage() {
             <h2 style={planTitleStyle}>Full</h2>
             <p style={priceStyle}>R$ 59,90</p>
             <p style={planTextStyle}>
-              Para quem quer operar com mais liberdade, velocidade e escala no dia a dia fiscal.
+              Para quem quer operar com mais liberdade, velocidade e escala no
+              dia a dia fiscal.
             </p>
 
             <ul style={listStyle}>
@@ -179,11 +156,35 @@ export default function PlanosPage() {
           </div>
         </section>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 900px) {
+          .planos-grid-responsive {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .planos-title-responsive {
+            font-size: 28px !important;
+            line-height: 1.1 !important;
+          }
+
+          .planos-subtitle-responsive {
+            font-size: 16px !important;
+          }
+
+          .planos-card-responsive {
+            padding: 18px !important;
+            border-radius: 22px !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
 
-const pageStyle: React.CSSProperties = {
+const pageStyle: CSSProperties = {
   minHeight: "100vh",
   background:
     "linear-gradient(135deg, #020617 0%, #081224 35%, #0f172a 65%, #071b34 100%)",
@@ -193,36 +194,37 @@ const pageStyle: React.CSSProperties = {
   padding: "40px 20px",
 };
 
-const containerStyle: React.CSSProperties = {
+const containerStyle: CSSProperties = {
   maxWidth: "1200px",
   width: "100%",
 };
 
-const heroStyle: React.CSSProperties = {
+const heroStyle: CSSProperties = {
   marginBottom: "28px",
 };
 
-const titleStyle: React.CSSProperties = {
-  fontSize: "48px",
+const titleStyle: CSSProperties = {
+  fontSize: "clamp(28px, 6vw, 48px)",
   fontWeight: 800,
   margin: 0,
   marginBottom: "12px",
   lineHeight: 1.1,
 };
 
-const subtitleStyle: React.CSSProperties = {
+const subtitleStyle: CSSProperties = {
   fontSize: "18px",
   color: "#cbd5e1",
   margin: 0,
+  maxWidth: "860px",
 };
 
-const plansGridStyle: React.CSSProperties = {
+const plansGridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
   gap: "18px",
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   background: "rgba(2, 6, 23, 0.78)",
   borderRadius: "24px",
   padding: "20px",
@@ -230,17 +232,17 @@ const cardStyle: React.CSSProperties = {
   boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
 };
 
-const cardFeaturedStyle: React.CSSProperties = {
+const cardFeaturedStyle: CSSProperties = {
   ...cardStyle,
   border: "1px solid rgba(16, 185, 129, 0.35)",
   boxShadow: "0 22px 50px rgba(0,0,0,0.32)",
 };
 
-const pillRowStyle: React.CSSProperties = {
+const pillRowStyle: CSSProperties = {
   marginBottom: "16px",
 };
 
-const topPillStyle: React.CSSProperties = {
+const topPillStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -253,7 +255,7 @@ const topPillStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const topPillFeaturedStyle: React.CSSProperties = {
+const topPillFeaturedStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -266,28 +268,28 @@ const topPillFeaturedStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const planTitleStyle: React.CSSProperties = {
+const planTitleStyle: CSSProperties = {
   fontSize: "22px",
   margin: 0,
   marginBottom: "10px",
   fontWeight: 800,
 };
 
-const priceStyle: React.CSSProperties = {
+const priceStyle: CSSProperties = {
   fontSize: "30px",
   fontWeight: 800,
   margin: 0,
   marginBottom: "12px",
 };
 
-const planTextStyle: React.CSSProperties = {
+const planTextStyle: CSSProperties = {
   fontSize: "15px",
   color: "#e2e8f0",
   lineHeight: 1.7,
   marginBottom: "18px",
 };
 
-const listStyle: React.CSSProperties = {
+const listStyle: CSSProperties = {
   listStyle: "none",
   padding: 0,
   margin: 0,
@@ -297,7 +299,7 @@ const listStyle: React.CSSProperties = {
   gap: "10px",
 };
 
-const listItemStyle: React.CSSProperties = {
+const listItemStyle: CSSProperties = {
   background: "rgba(15, 23, 42, 0.92)",
   border: "1px solid rgba(59, 130, 246, 0.16)",
   borderRadius: "14px",
@@ -306,7 +308,7 @@ const listItemStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "center",
@@ -320,7 +322,7 @@ const buttonStyle: React.CSSProperties = {
   fontSize: "16px",
 };
 
-const buttonPrimaryStyle: React.CSSProperties = {
+const buttonPrimaryStyle: CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "center",
@@ -334,7 +336,7 @@ const buttonPrimaryStyle: React.CSSProperties = {
   fontSize: "16px",
 };
 
-const successMessageStyle: React.CSSProperties = {
+const successMessageStyle: CSSProperties = {
   marginBottom: "20px",
   padding: "14px 16px",
   borderRadius: "12px",
@@ -343,7 +345,7 @@ const successMessageStyle: React.CSSProperties = {
   color: "#bbf7d0",
 };
 
-const warningMessageStyle: React.CSSProperties = {
+const warningMessageStyle: CSSProperties = {
   marginBottom: "20px",
   padding: "14px 16px",
   borderRadius: "12px",
@@ -352,7 +354,7 @@ const warningMessageStyle: React.CSSProperties = {
   color: "#fde68a",
 };
 
-const errorMessageStyle: React.CSSProperties = {
+const errorMessageStyle: CSSProperties = {
   marginBottom: "20px",
   padding: "14px 16px",
   borderRadius: "12px",
