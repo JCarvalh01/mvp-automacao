@@ -34,6 +34,16 @@ if (publicKey) {
   });
 }
 
+function resumirCodigoPix(codigo: string | null) {
+  const valor = String(codigo || "").trim();
+
+  if (!valor) return "";
+
+  if (valor.length <= 80) return valor;
+
+  return `${valor.slice(0, 80)}...`;
+}
+
 function CheckoutContent() {
   const searchParams = useSearchParams();
   const planoParam = searchParams.get("plano") as Plano;
@@ -47,6 +57,7 @@ function CheckoutContent() {
   const [pixCode, setPixCode] = useState<string | null>(null);
   const [boletoUrl, setBoletoUrl] = useState<string | null>(null);
   const [processandoPagamento, setProcessandoPagamento] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
     if (planoParam === "essencial" || planoParam === "full") {
@@ -87,6 +98,7 @@ function CheckoutContent() {
       setPixQrBase64(null);
       setPixCode(null);
       setBoletoUrl(null);
+      setCopiado(false);
 
       if (!publicKey) {
         setErro("A chave pública do Mercado Pago não está configurada.");
@@ -144,6 +156,7 @@ function CheckoutContent() {
       setPixQrBase64(null);
       setPixCode(null);
       setBoletoUrl(null);
+      setCopiado(false);
 
       const client = getClientSession();
 
@@ -207,6 +220,18 @@ function CheckoutContent() {
       console.log(error);
       setErro("Erro inesperado ao processar o pagamento.");
       setProcessandoPagamento(false);
+    }
+  }
+
+  async function copiarCodigoPix() {
+    try {
+      if (!pixCode) return;
+      await navigator.clipboard.writeText(pixCode);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch (error) {
+      console.log("Erro ao copiar código Pix:", error);
+      setErro("Não foi possível copiar o código Pix.");
     }
   }
 
@@ -282,11 +307,12 @@ function CheckoutContent() {
           {pixCode && (
             <div style={copyBoxStyle}>
               <strong style={copyTitleStyle}>Código Pix</strong>
-              <textarea
-                readOnly
-                value={pixCode}
-                style={copyTextareaStyle}
-              />
+
+              <div style={pixPreviewStyle}>{resumirCodigoPix(pixCode)}</div>
+
+              <button onClick={copiarCodigoPix} style={copyButtonStyle}>
+                {copiado ? "Código copiado!" : "Copiar código Pix"}
+              </button>
             </div>
           )}
 
@@ -632,14 +658,29 @@ const copyTitleStyle: CSSProperties = {
   fontSize: "15px",
 };
 
-const copyTextareaStyle: CSSProperties = {
+const pixPreviewStyle: CSSProperties = {
   width: "100%",
-  minHeight: "110px",
+  borderRadius: "14px",
+  border: "2px solid #f59e0b",
+  padding: "14px",
+  fontSize: "15px",
+  lineHeight: 1.5,
+  background: "#fffdf8",
+  color: "#111827",
+  wordBreak: "break-word",
+  marginBottom: "12px",
+};
+
+const copyButtonStyle: CSSProperties = {
+  width: "100%",
+  padding: "12px 14px",
   borderRadius: "12px",
-  border: "1px solid #cbd5e1",
-  padding: "12px",
-  fontSize: "13px",
-  resize: "vertical",
+  border: "none",
+  background: "#2563eb",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+  fontSize: "14px",
 };
 
 const boletoButtonStyle: CSSProperties = {
