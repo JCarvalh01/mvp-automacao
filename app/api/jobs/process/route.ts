@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 type InvoiceJob = {
   id: number;
   invoice_id: number;
-  partner_company_id: number;
+  partner_company_id: number | null;
   client_id: number;
   job_type: string;
   status: "queued" | "processing" | "success" | "error" | "canceled";

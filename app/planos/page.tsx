@@ -76,7 +76,7 @@ export default function PlanosPage() {
         return;
       }
 
-      window.location.href = result.init_point;
+      window.location.href = `/checkout?plano=${plano}`;
     } catch (error) {
       console.log("Erro ao iniciar pagamento:", error);
       setMensagem("Erro inesperado ao iniciar pagamento.");

@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 type EmitirNotaBody = {
   invoiceId?: number | string;
   clientId?: number | string;
-  partnerCompanyId?: number | string;
+  partnerCompanyId?: number | string | null;
   competencyDate?: string;
   tomadorDocumento?: string;
   taxCode?: string;
@@ -17,7 +17,7 @@ type EmitirNotaBody = {
 type InvoiceRow = {
   id: number;
   client_id: number;
-  partner_company_id: number;
+  partner_company_id: number | null;
   status: string | null;
   pdf_url?: string | null;
   xml_url?: string | null;
@@ -91,6 +91,19 @@ function getMonthStartIso() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   return start.toISOString();
+}
+
+function getEffectiveNotesLimit(planType: string | null | undefined, dbNotesLimit?: number | null) {
+  const plano = String(planType || "").trim().toLowerCase();
+
+  if (plano === "full") return 999999;
+  if (plano === "essencial") return 10;
+
+  if (typeof dbNotesLimit === "number" && Number.isFinite(dbNotesLimit)) {
+    return dbNotesLimit;
+  }
+
+  return 0;
 }
 
 async function logJob(params: {
@@ -224,6 +237,11 @@ export async function POST(request: Request) {
     const partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
     const serviceValueParsed = toNumber(body.serviceValue);
 
+    const isClienteDireto =
+      body.partnerCompanyId === null ||
+      body.partnerCompanyId === undefined ||
+      String(body.partnerCompanyId).trim() === "";
+
     invoiceId = Number.isNaN(invoiceIdParsed) ? null : invoiceIdParsed;
 
     const competencyDate = String(body.competencyDate ?? "").trim();
@@ -237,7 +255,7 @@ export async function POST(request: Request) {
     if (
       !invoiceId ||
       Number.isNaN(clientIdParsed) ||
-      Number.isNaN(partnerCompanyIdParsed) ||
+      (!isClienteDireto && Number.isNaN(partnerCompanyIdParsed)) ||
       !competencyDate ||
       !tomadorDocumento ||
       !taxCode ||
@@ -307,7 +325,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (Number(invoice.partner_company_id) !== partnerCompanyIdParsed) {
+    if (
+      !isClienteDireto &&
+      Number(invoice.partner_company_id) !== partnerCompanyIdParsed
+    ) {
       console.error("Invoice não pertence à empresa informada.", {
         invoiceId,
         partnerCompanyIdRecebido: partnerCompanyIdParsed,
@@ -340,7 +361,10 @@ export async function POST(request: Request) {
 
     const cliente = clienteAtual;
 
-    if (Number(cliente.partner_company_id) !== partnerCompanyIdParsed) {
+    if (
+      !isClienteDireto &&
+      Number(cliente.partner_company_id) !== partnerCompanyIdParsed
+    ) {
       await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
       return NextResponse.json(
         {
@@ -362,9 +386,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // =========================================================
-    // REGRA: CLIENTE DE EMPRESA PARCEIRA DEPENDE DA EMPRESA
-    // =========================================================
     if (cliente.partner_company_id) {
       const { data: empresaAtual, error: empresaError } =
         await buscarEmpresaParceira(cliente.partner_company_id);
@@ -401,9 +422,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // =========================================================
-    // REGRA: CLIENTE DIRETO USA BLOQUEIO E PLANO PRÓPRIOS
-    // =========================================================
     if (!cliente.partner_company_id && cliente.is_blocked) {
       await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
       return NextResponse.json(
@@ -437,14 +455,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const planType = String(cliente.plan_type || "essencial").trim().toLowerCase();
-    const notesLimit =
-      typeof cliente.notes_limit === "number" ? cliente.notes_limit : null;
+    const planType = String(cliente.plan_type || "").trim().toLowerCase();
+    const notesLimit = getEffectiveNotesLimit(planType, cliente.notes_limit);
 
-    // =========================================================
-    // REGRA: LIMITE DE PLANO SÓ VALE PARA CLIENTE DIRETO
-    // =========================================================
-    if (!cliente.partner_company_id && planType === "essencial" && notesLimit !== null && notesLimit > 0) {
+    if (!cliente.partner_company_id && !planType) {
+      await marcarInvoiceErro(invoiceId, "Cliente sem plano ativo.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Escolha um plano antes de emitir notas.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (!cliente.partner_company_id && planType === "essencial" && notesLimit > 0) {
       const { count: totalNotasMes, error: countError } =
         await contarNotasSuccessDoMes(clientIdParsed);
 
@@ -515,10 +540,29 @@ export async function POST(request: Request) {
       );
     }
 
+    setTimeout(async () => {
+      try {
+        const { data } = await supabaseAdmin
+          .from("invoices")
+          .select("status")
+          .eq("id", invoiceId as number)
+          .single();
+
+        if (data?.status === "processing") {
+          await marcarInvoiceErro(
+            invoiceId as number,
+            "Timeout na automação (processamento não finalizado)."
+          );
+        }
+      } catch (err) {
+        console.error("Erro no failsafe da invoice:", err);
+      }
+    }, 180000);
+
     const jobPayload = {
       invoiceId,
       clientId: clientIdParsed,
-      partnerCompanyId: partnerCompanyIdParsed,
+      partnerCompanyId: isClienteDireto ? null : partnerCompanyIdParsed,
       cnpjEmpresa: onlyDigits(cliente.cnpj),
       senhaEmpresa: String(cliente.password || "").trim(),
       competencyDate,
@@ -534,7 +578,7 @@ export async function POST(request: Request) {
       .from("invoice_jobs")
       .insert({
         invoice_id: invoiceId,
-        partner_company_id: partnerCompanyIdParsed,
+        partner_company_id: isClienteDireto ? null : partnerCompanyIdParsed,
         client_id: clientIdParsed,
         job_type: "emit_nfse",
         status: "queued",
@@ -589,7 +633,7 @@ export async function POST(request: Request) {
       jobId: novoJob.id,
       invoiceId,
       clientId: clientIdParsed,
-      partnerCompanyId: partnerCompanyIdParsed,
+      partnerCompanyId: isClienteDireto ? null : partnerCompanyIdParsed,
       valor: serviceValueParsed,
       cidade: serviceCity,
       competencia: competencyDate,

@@ -18,6 +18,9 @@ type ClienteSession = {
   mei_created_at?: string | null;
   is_active: boolean;
   partner_company_id: number | null;
+  plan_type?: string | null;
+  notes_limit?: number | null;
+  is_blocked?: boolean | null;
 };
 
 type Invoice = {
@@ -116,6 +119,16 @@ function getStatusMeta(status?: string | null) {
   };
 }
 
+function getPlanoLabel(planType?: string | null) {
+  const plano = String(planType || "").toLowerCase();
+
+  if (plano === "essencial") return "Essencial";
+  if (plano === "full") return "Full";
+  if (plano === "free") return "Free";
+
+  return "Sem plano";
+}
+
 export default function AreaClientePage() {
   const [cliente, setCliente] = useState<ClienteSession | null>(null);
   const [notas, setNotas] = useState<Invoice[]>([]);
@@ -151,7 +164,26 @@ export default function AreaClientePage() {
         return;
       }
 
-      setCliente(session);
+      const { data: clienteDb, error: clienteDbError } = await supabase
+        .from("clients")
+        .select("plan_type, notes_limit, is_blocked")
+        .eq("id", session.id)
+        .single();
+
+      if (clienteDbError) {
+        console.error("Erro ao buscar dados do plano do cliente:", clienteDbError);
+      }
+
+      const clienteComPlano: ClienteSession = {
+        ...session,
+        plan_type: clienteDb?.plan_type || null,
+        notes_limit: clienteDb?.notes_limit ?? 0,
+        is_blocked: clienteDb?.is_blocked ?? false,
+      };
+
+      setCliente(clienteComPlano);
+
+      localStorage.setItem("client", JSON.stringify(clienteComPlano));
 
       const { data, error } = await supabase
         .from("invoices")
@@ -189,12 +221,35 @@ export default function AreaClientePage() {
       localStorage.removeItem("client");
       localStorage.removeItem("clientSession");
       localStorage.removeItem("cliente");
+      localStorage.removeItem("user");
       window.location.href = "/login";
     } catch (error) {
       console.error("Erro ao encerrar sessão do cliente:", error);
       setSaindo(false);
       alert("Não foi possível sair neste momento.");
     }
+  }
+
+  function emitirRapido() {
+    if (!usoPlano) return;
+
+    if (usoPlano.bloqueado) {
+      alert("Seu acesso está bloqueado no momento.");
+      return;
+    }
+
+    if (!usoPlano.plano) {
+      alert("Escolha um plano antes de emitir.");
+      window.location.href = "/planos";
+      return;
+    }
+
+    if (usoPlano.limite > 0 && usoPlano.usadas >= usoPlano.limite) {
+      alert("Você atingiu o limite mensal do seu plano. Faça upgrade para continuar emitindo.");
+      return;
+    }
+
+    window.location.href = "/emitir-cliente";
   }
 
   const resumo = useMemo(() => {
@@ -222,6 +277,27 @@ export default function AreaClientePage() {
     };
   }, [notas]);
 
+  const usoPlano = useMemo(() => {
+    if (!cliente) return null;
+
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth();
+    const anoAtual = hoje.getFullYear();
+
+    const notasMes = notas.filter((n) => {
+      if (!n.created_at) return false;
+      const d = new Date(n.created_at);
+      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+    });
+
+    return {
+      usadas: notasMes.length,
+      limite: Number(cliente.notes_limit || 0),
+      plano: cliente.plan_type || null,
+      bloqueado: Boolean(cliente.is_blocked),
+    };
+  }, [notas, cliente]);
+
   const ultimasNotas = useMemo(() => notas.slice(0, 6), [notas]);
 
   const ultimaNotaStatus = useMemo(() => {
@@ -238,6 +314,36 @@ export default function AreaClientePage() {
 
     return "Última emissão registrada";
   }, [resumo.ultimaNota]);
+
+  const statusPlanoTexto = useMemo(() => {
+    if (!usoPlano) return "Carregando plano...";
+
+    if (usoPlano.bloqueado) {
+      return "Seu acesso está bloqueado";
+    }
+
+    if (!usoPlano.plano) {
+      return "Escolha um plano para começar a emitir";
+    }
+
+    if (usoPlano.limite > 0 && usoPlano.usadas >= usoPlano.limite) {
+      return "Você atingiu o limite do seu plano";
+    }
+
+    return `Plano ${getPlanoLabel(usoPlano.plano)} ativo`;
+  }, [usoPlano]);
+
+  const textoUsoPlano = useMemo(() => {
+    if (!usoPlano) return "-";
+
+    if (!usoPlano.plano) return "Sem plano";
+
+    if (usoPlano.limite === 999999) {
+      return `${usoPlano.usadas} / ∞`;
+    }
+
+    return `${usoPlano.usadas} / ${usoPlano.limite}`;
+  }, [usoPlano]);
 
   const whatsappLink = `https://wa.me/5511982966310?text=${encodeURIComponent(
     "Olá! Preciso de ajuda na plataforma MVP Automação Fiscal. Poderia me auxiliar?"
@@ -307,7 +413,7 @@ export default function AreaClientePage() {
             <div
               style={{
                 ...heroInfoGridStyle,
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))",
               }}
             >
               <div style={heroInfoCardStyle}>
@@ -323,6 +429,18 @@ export default function AreaClientePage() {
               <div style={heroInfoCardStyle}>
                 <span style={heroInfoLabelStyle}>Email</span>
                 <strong style={heroInfoValueStyle}>{cliente?.email || "-"}</strong>
+              </div>
+
+              <div style={heroInfoCardStyle}>
+                <span style={heroInfoLabelStyle}>Plano</span>
+                <strong style={heroInfoValueStyle}>
+                  {getPlanoLabel(usoPlano?.plano)}
+                </strong>
+              </div>
+
+              <div style={heroInfoCardStyle}>
+                <span style={heroInfoLabelStyle}>Uso mensal</span>
+                <strong style={heroInfoValueStyle}>{textoUsoPlano}</strong>
               </div>
             </div>
           </div>
@@ -343,17 +461,25 @@ export default function AreaClientePage() {
               <span style={statusPanelLabelStyle}>Status do painel</span>
               <strong style={statusPanelValueStyle}>{ultimaNotaStatus}</strong>
               <span style={statusPanelHintStyle}>
-                Use os atalhos abaixo para emitir uma nova nota ou consultar seu histórico.
+                {statusPlanoTexto}. Use os atalhos abaixo para emitir uma nova nota ou consultar seu histórico.
               </span>
             </div>
 
             <div style={heroActionStackStyle}>
-              <Link href="/emitir-cliente" style={heroPrimaryActionStyle}>
+              <button
+                type="button"
+                onClick={emitirRapido}
+                style={heroPrimaryActionStyle}
+              >
                 Emitir nota rápida
-              </Link>
+              </button>
 
               <Link href="/minhas-notas" style={heroSecondaryActionStyle}>
                 Ver minhas notas
+              </Link>
+
+              <Link href="/planos" style={upgradeButtonStyle}>
+                Fazer upgrade de plano
               </Link>
 
               <button
@@ -438,16 +564,20 @@ export default function AreaClientePage() {
           <div
             style={{
               ...quickActionsGridStyle,
-              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
             }}
           >
-            <Link href="/emitir-cliente" style={quickPrimaryCardStyle}>
+            <button
+              type="button"
+              onClick={emitirRapido}
+              style={quickPrimaryCardButtonStyle}
+            >
               <span style={quickCardBadgeStyle}>Emissão</span>
               <strong style={quickCardTitleStyle}>Emitir nova nota</strong>
               <span style={quickCardTextStyle}>
                 Gere uma nova nota usando a emissão rápida da sua conta.
               </span>
-            </Link>
+            </button>
 
             <Link href="/minhas-notas" style={quickSecondaryCardStyle}>
               <span style={quickCardBadgeStyle}>Arquivos</span>
@@ -456,6 +586,66 @@ export default function AreaClientePage() {
                 Visualize seu histórico e acesse PDFs e XMLs.
               </span>
             </Link>
+
+            <Link href="/planos" style={quickUpgradeCardStyle}>
+              <span style={quickCardBadgeStyle}>Upgrade</span>
+              <strong style={quickCardTitleStyle}>Trocar de plano</strong>
+              <span style={quickCardTextStyle}>
+                Compare os planos e faça upgrade para continuar crescendo.
+              </span>
+            </Link>
+          </div>
+        </section>
+
+        <section style={planoStatusPanelStyle}>
+          <div style={planoStatusHeaderStyle}>
+            <div>
+              <h2 style={panelTitleStyle}>Plano e limite</h2>
+              <p style={panelSubtitleStyle}>
+                Acompanhe o status atual da sua assinatura e o consumo do mês.
+              </p>
+            </div>
+
+            <Link href="/planos" style={upgradeMiniButtonStyle}>
+              Ver planos
+            </Link>
+          </div>
+
+          <div
+            style={{
+              ...planoStatusGridStyle,
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            }}
+          >
+            <div style={planoStatusCardStyle}>
+              <span style={noteInfoLabelStyle}>Plano atual</span>
+              <strong style={planoStatusValueStyle}>
+                {getPlanoLabel(usoPlano?.plano)}
+              </strong>
+              <span style={metricHintStyle}>
+                {usoPlano?.plano
+                  ? "Seu plano está vinculado ao seu cadastro."
+                  : "Você ainda não escolheu um plano."}
+              </span>
+            </div>
+
+            <div style={planoStatusCardStyle}>
+              <span style={noteInfoLabelStyle}>Uso mensal</span>
+              <strong style={planoStatusValueStyle}>{textoUsoPlano}</strong>
+              <span style={metricHintStyle}>
+                {usoPlano?.limite === 999999
+                  ? "Plano com emissão ilimitada."
+                  : "Quantidade usada no mês atual."}
+              </span>
+            </div>
+
+            <div style={planoStatusCardStyle}>
+              <span style={noteInfoLabelStyle}>Situação</span>
+              <strong style={planoStatusValueStyle}>{statusPlanoTexto}</strong>
+              <span style={metricHintStyle}>
+                Faça upgrade caso precise ampliar sua operação.
+              </span>
+            </div>
           </div>
         </section>
 
@@ -493,9 +683,9 @@ export default function AreaClientePage() {
                 com acesso rápido aos arquivos.
               </p>
 
-              <Link href="/emitir-cliente" style={emptyActionStyle}>
+              <button type="button" onClick={emitirRapido} style={emptyActionButtonStyle}>
                 Emitir minha primeira nota
-              </Link>
+              </button>
             </div>
           ) : (
             <div style={notesListStyle}>
@@ -886,6 +1076,8 @@ const heroPrimaryActionStyle: React.CSSProperties = {
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 12px 28px rgba(16,185,129,0.24)",
+  border: "none",
+  cursor: "pointer",
 };
 
 const heroSecondaryActionStyle: React.CSSProperties = {
@@ -901,6 +1093,19 @@ const heroSecondaryActionStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
+const upgradeButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  padding: "15px 16px",
+  borderRadius: "16px",
+  background: "rgba(245,158,11,0.12)",
+  border: "1px solid rgba(245,158,11,0.24)",
+  color: "#fde68a",
+  fontWeight: 800,
+};
+
 const logoutButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -911,6 +1116,8 @@ const logoutButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(239,68,68,0.20)",
   color: "#fecaca",
   fontWeight: 800,
+  borderWidth: 1,
+  borderStyle: "solid",
 };
 
 const metricsGridStyle: React.CSSProperties = {
@@ -1003,7 +1210,7 @@ const quickActionsGridStyle: React.CSSProperties = {
   gap: "14px",
 };
 
-const quickPrimaryCardStyle: React.CSSProperties = {
+const quickPrimaryCardButtonStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "8px",
@@ -1014,6 +1221,8 @@ const quickPrimaryCardStyle: React.CSSProperties = {
     "linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(15,23,42,0.90) 90%)",
   border: "1px solid rgba(16,185,129,0.16)",
   color: "#ffffff",
+  textAlign: "left",
+  cursor: "pointer",
 };
 
 const quickSecondaryCardStyle: React.CSSProperties = {
@@ -1026,6 +1235,19 @@ const quickSecondaryCardStyle: React.CSSProperties = {
   background:
     "linear-gradient(135deg, rgba(37,99,235,0.14) 0%, rgba(15,23,42,0.90) 90%)",
   border: "1px solid rgba(59,130,246,0.16)",
+  color: "#ffffff",
+};
+
+const quickUpgradeCardStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+  textDecoration: "none",
+  padding: "20px",
+  borderRadius: "20px",
+  background:
+    "linear-gradient(135deg, rgba(245,158,11,0.14) 0%, rgba(15,23,42,0.90) 90%)",
+  border: "1px solid rgba(245,158,11,0.18)",
   color: "#ffffff",
 };
 
@@ -1050,6 +1272,58 @@ const quickCardTextStyle: React.CSSProperties = {
   color: "#cbd5e1",
   fontSize: "14px",
   lineHeight: 1.65,
+};
+
+const planoStatusPanelStyle: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,0.88) 0%, rgba(15,23,42,0.92) 100%)",
+  border: "1px solid rgba(59,130,246,0.12)",
+  borderRadius: "24px",
+  padding: "20px",
+  boxShadow: "0 20px 48px rgba(0,0,0,0.24)",
+  marginBottom: "18px",
+};
+
+const planoStatusHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "14px",
+  flexWrap: "wrap",
+  marginBottom: "16px",
+};
+
+const planoStatusGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: "14px",
+};
+
+const planoStatusCardStyle: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(2,6,23,0.92) 100%)",
+  border: "1px solid rgba(59,130,246,0.10)",
+  borderRadius: "18px",
+  padding: "18px",
+};
+
+const planoStatusValueStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "20px",
+  color: "#ffffff",
+  fontWeight: 900,
+};
+
+const upgradeMiniButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  padding: "12px 14px",
+  borderRadius: "14px",
+  background: "rgba(245,158,11,0.12)",
+  border: "1px solid rgba(245,158,11,0.24)",
+  color: "#fde68a",
+  fontWeight: 800,
 };
 
 const panelStyle: React.CSSProperties = {
@@ -1125,17 +1399,18 @@ const emptyTextStyle: React.CSSProperties = {
   lineHeight: 1.7,
 };
 
-const emptyActionStyle: React.CSSProperties = {
+const emptyActionButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   marginTop: "16px",
   padding: "14px 18px",
   borderRadius: "14px",
   background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
   color: "#ffffff",
   fontWeight: 800,
+  border: "none",
+  cursor: "pointer",
 };
 
 const notesListStyle: React.CSSProperties = {

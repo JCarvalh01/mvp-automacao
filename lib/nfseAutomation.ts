@@ -80,18 +80,18 @@ function formatarValorParaDigitacaoNoPortal(valor: number | string) {
     throw new Error("Valor do serviço não informado.");
   }
 
-  const temVirgula = bruto.includes(",");
-  const temPonto = bruto.includes(".");
+  const possuiVirgula = bruto.includes(",");
+  const possuiPonto = bruto.includes(".");
 
-  let normalizado = bruto.replace(/\s/g, "");
+  let numero: number;
 
-  if (temVirgula && temPonto) {
-    normalizado = normalizado.replace(/\./g, "").replace(",", ".");
-  } else if (temVirgula) {
-    normalizado = normalizado.replace(",", ".");
+  if (possuiVirgula && possuiPonto) {
+    numero = Number(bruto.replace(/\./g, "").replace(",", "."));
+  } else if (possuiVirgula) {
+    numero = Number(bruto.replace(",", "."));
+  } else {
+    numero = Number(bruto);
   }
-
-  const numero = Number(normalizado);
 
   if (!Number.isFinite(numero)) {
     throw new Error(`Valor do serviço inválido: ${valor}`);
@@ -860,8 +860,8 @@ async function baixarArquivoPorBotao(
       console.log(`Tentando baixar ${nomeLogico} com seletor: ${selector}`);
 
       const [download] = await Promise.all([
-        page.waitForEvent("download", { timeout: 5000 }),
-        botao.click({ force: true, timeout: 3000 }),
+        page.waitForEvent("download", { timeout: 8000 }),
+        botao.click({ force: true }),
       ]);
 
       const path = `/tmp/${nomeArquivo}`;
@@ -921,25 +921,28 @@ async function emitirNotaNaTelaFinal(page: Page) {
 }
 
 async function esperarConclusaoEmissao(page: Page) {
-  const marcadoresSucesso = [
-    'text="A NFS-e foi gerada com sucesso"',
-    'text="Baixar DANFSe"',
-    'text="Baixar XML"',
-    'text="Visualizar NFS-e"',
-    'text="NFS-e emitidas"',
-  ];
+  const timeoutTotal = 10000;
+  const inicio = Date.now();
 
-  for (const selector of marcadoresSucesso) {
-    try {
-      await page.locator(selector).first().waitFor({
-        state: "visible",
-        timeout: 7000,
-      });
-      return;
-    } catch {
-      // tenta próximo
-    }
+  while (Date.now() - inicio < timeoutTotal) {
+    const sucesso = await esperarQualquerUm(
+      page,
+      [
+        'text="Baixar DANFSe"',
+        'text="Baixar XML"',
+        'text="Visualizar NFS-e"',
+        'text="NFS-e emitidas"',
+        'text="A NFS-e foi gerada com sucesso"',
+      ],
+      1500
+    );
+
+    if (sucesso) return;
+
+    await page.waitForTimeout(300);
   }
+
+  throw new Error("A emissão não foi confirmada na tela final.");
 }
 
 async function capturarLinksResultado(page: Page) {
@@ -961,21 +964,25 @@ async function capturarLinksResultado(page: Page) {
 }
 
 async function capturarChaveOuNumeroNfse(page: Page) {
-  const textoPagina = (await page.textContent("body").catch(() => "")) || "";
+  for (let i = 0; i < 5; i++) {
+    const textoPagina = (await page.textContent("body").catch(() => "")) || "";
 
-  const match44 = textoPagina.match(/\b\d{44}\b/);
-  if (match44) {
-    return match44[0];
-  }
+    const match44 = textoPagina.match(/\b\d{44}\b/);
+    if (match44) {
+      return match44[0];
+    }
 
-  const matchChave = textoPagina.match(/Chave\s*(de acesso)?\s*[:\-]?\s*(\d{30,})/i);
-  if (matchChave) {
-    return matchChave[2];
-  }
+    const matchChave = textoPagina.match(/Chave\s*(de acesso)?\s*[:\-]?\s*(\d{30,})/i);
+    if (matchChave) {
+      return matchChave[2];
+    }
 
-  const matchNumero = textoPagina.match(/NFS-e\s*[:\-]?\s*(\d+)/i);
-  if (matchNumero) {
-    return matchNumero[1];
+    const matchNumero = textoPagina.match(/NFS-e\s*[:\-]?\s*(\d+)/i);
+    if (matchNumero) {
+      return matchNumero[1];
+    }
+
+    await page.waitForTimeout(500);
   }
 
   return null;

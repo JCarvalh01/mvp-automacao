@@ -189,11 +189,40 @@ function getStatusMeta(status?: string | null) {
   };
 }
 
+function getPlanoTexto(cliente: Cliente | null) {
+  if (!cliente || cliente.partner_company_id) {
+    return {
+      titulo: "Plano liberado pela empresa",
+      subtitulo: "A emissão é controlada pela empresa responsável pelo seu acesso.",
+    };
+  }
+
+  const plano = String(cliente.plan_type || "").trim().toLowerCase();
+
+  if (plano === "essencial") {
+    return {
+      titulo: "Plano Essencial",
+      subtitulo: "Limite mensal controlado automaticamente pelo sistema.",
+    };
+  }
+
+  if (plano === "full") {
+    return {
+      titulo: "Plano Full",
+      subtitulo: "Plano com emissão ampliada para sua operação.",
+    };
+  }
+
+  return {
+    titulo: "Sem plano",
+    subtitulo: "Escolha um plano para liberar a emissão de notas.",
+  };
+}
+
 export default function EmitirClientePage() {
   const router = useRouter();
   const { loading: loadingAccess, authorized } = useProtectedRoute(["client"]);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const notasConsumidasRef = useRef<Set<number>>(new Set());
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -308,36 +337,6 @@ export default function EmitirClientePage() {
     setSalvando(false);
   }
 
-  async function consumirNotaDoPlanoSeNecessario(invoiceId: number) {
-    if (!cliente) return;
-    if (cliente.partner_company_id) return;
-    if (!cliente.plan_type) return;
-    if (cliente.notes_limit === null || cliente.notes_limit === undefined) return;
-    if (notasConsumidasRef.current.has(invoiceId)) return;
-
-    const novoLimite = Math.max(0, Number(cliente.notes_limit) - 1);
-
-    const { error } = await supabase
-      .from("clients")
-      .update({ notes_limit: novoLimite })
-      .eq("id", cliente.id);
-
-    if (error) {
-      console.log("Erro ao consumir nota do plano:", error);
-      return;
-    }
-
-    notasConsumidasRef.current.add(invoiceId);
-    setCliente((prev) =>
-      prev
-        ? {
-            ...prev,
-            notes_limit: novoLimite,
-          }
-        : prev
-    );
-  }
-
   async function iniciarAcompanhamentoNota(invoiceId: number, notaBase: UltimaNota) {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -391,7 +390,6 @@ export default function EmitirClientePage() {
         const statusAtual = String(data.status || "").toLowerCase();
 
         if (statusAtual === "success" && (data.pdf_url || data.xml_url)) {
-          await consumirNotaDoPlanoSeNecessario(data.id);
           pararAcompanhamento();
           setMensagem("Nota emitida com sucesso!");
           setTipoMensagem("sucesso");
@@ -437,6 +435,7 @@ export default function EmitirClientePage() {
   const podeAbrirXml = Boolean(notaGerada && ultimaNota?.xml_url);
   const exibindoProcessamento = salvando || acompanhandoNota;
   const clienteDireto = Boolean(cliente && !cliente.partner_company_id);
+  const planoInfo = getPlanoTexto(cliente);
 
   function validarBloqueioPlano() {
     if (!cliente) return false;
@@ -457,15 +456,6 @@ export default function EmitirClientePage() {
     if (cliente.is_blocked) {
       setMensagem("Seu acesso está bloqueado.");
       setTipoMensagem("erro");
-      return false;
-    }
-
-    if (cliente.notes_limit !== null && cliente.notes_limit !== undefined && cliente.notes_limit <= 0) {
-      setMensagem("Você atingiu o limite do seu plano. Escolha outro plano para continuar.");
-      setTipoMensagem("aviso");
-      setTimeout(() => {
-        router.push("/planos");
-      }, 1200);
       return false;
     }
 
@@ -695,13 +685,6 @@ export default function EmitirClientePage() {
         return;
       }
 
-      if (
-        (statusRetorno === "success" || statusRetorno === "sucesso") &&
-        (resultadoAutomacao.invoice?.id || data.id)
-      ) {
-        await consumirNotaDoPlanoSeNecessario(resultadoAutomacao.invoice?.id || data.id);
-      }
-
       if (notaEmitida.error_message) {
         setMensagem("Nota emitida, mas houve um aviso no processamento.");
         setTipoMensagem("aviso");
@@ -763,14 +746,8 @@ export default function EmitirClientePage() {
               {clienteDireto && (
                 <div style={planInfoBoxStyle}>
                   <span style={planInfoLabelStyle}>Plano atual</span>
-                  <strong style={planInfoValueStyle}>
-                    {cliente?.plan_type ? cliente.plan_type : "Sem plano"}
-                  </strong>
-                  <span style={planInfoSubStyle}>
-                    {cliente?.plan_type
-                      ? `Notas restantes: ${cliente?.notes_limit ?? 0}`
-                      : "Escolha um plano para liberar emissão"}
-                  </span>
+                  <strong style={planInfoValueStyle}>{planoInfo.titulo}</strong>
+                  <span style={planInfoSubStyle}>{planoInfo.subtitulo}</span>
 
                   <Link href="/planos" style={planLinkStyle}>
                     Ver planos
@@ -973,15 +950,13 @@ export default function EmitirClientePage() {
                     <>
                       <div style={summaryItemLightStyle}>
                         <span style={summaryLabelStyle}>Plano</span>
-                        <p style={summaryValueLightStyle}>
-                          {cliente?.plan_type || "Sem plano"}
-                        </p>
+                        <p style={summaryValueLightStyle}>{planoInfo.titulo}</p>
                       </div>
 
                       <div style={summaryItemLightStyle}>
-                        <span style={summaryLabelStyle}>Notas restantes</span>
+                        <span style={summaryLabelStyle}>Status</span>
                         <p style={summaryValueLightStyle}>
-                          {cliente?.notes_limit ?? 0}
+                          {cliente?.is_blocked ? "Bloqueado" : "Liberado para validação pelo backend"}
                         </p>
                       </div>
                     </>
