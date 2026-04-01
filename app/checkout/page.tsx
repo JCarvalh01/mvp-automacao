@@ -1,10 +1,10 @@
 "use client";
 
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
 import { getClientSession } from "@/lib/session";
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const searchParams = useSearchParams();
 
   const planoParam = searchParams.get("plano") as "essencial" | "full";
@@ -108,7 +108,21 @@ export default function CheckoutPage() {
   );
 }
 
-const pageStyle: React.CSSProperties = {
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={pageStyle}>
+          <div style={cardStyle}>Carregando checkout...</div>
+        </main>
+      }
+    >
+      <CheckoutContent />
+    </Suspense>
+  );
+}
+
+const pageStyle: CSSProperties = {
   minHeight: "100vh",
   display: "flex",
   alignItems: "center",
@@ -117,7 +131,7 @@ const pageStyle: React.CSSProperties = {
     "linear-gradient(135deg, #020617 0%, #081224 35%, #0f172a 65%, #071b34 100%)",
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   background: "rgba(2,6,23,0.8)",
   padding: "30px",
   borderRadius: "20px",
@@ -126,21 +140,21 @@ const cardStyle: React.CSSProperties = {
   color: "#fff",
 };
 
-const titleStyle: React.CSSProperties = {
+const titleStyle: CSSProperties = {
   fontSize: "24px",
   marginBottom: "20px",
 };
 
-const planoBoxStyle: React.CSSProperties = {
+const planoBoxStyle: CSSProperties = {
   marginBottom: "20px",
 };
 
-const priceStyle: React.CSSProperties = {
+const priceStyle: CSSProperties = {
   fontSize: "22px",
   fontWeight: "bold",
 };
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   width: "100%",
   padding: "14px",
   borderRadius: "12px",
@@ -148,4 +162,5 @@ const buttonStyle: React.CSSProperties = {
   border: "none",
   color: "#fff",
   fontWeight: "bold",
+  cursor: "pointer",
 };
