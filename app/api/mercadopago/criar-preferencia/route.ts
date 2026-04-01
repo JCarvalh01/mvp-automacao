@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Plano = "essencial" | "black";
+type Plano = "essencial" | "full";
 
 function getPlanoData(plano: Plano) {
   if (plano === "essencial") {
@@ -14,7 +14,7 @@ function getPlanoData(plano: Plano) {
   }
 
   return {
-    title: "Plano Black - MVP Automação Fiscal",
+    title: "Plano Full - MVP Automação Fiscal",
     price: 59.9,
   };
 }
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (plano !== "essencial" && plano !== "black") {
+    if (plano !== "essencial" && plano !== "full") {
       return NextResponse.json(
         { success: false, message: "Plano inválido." },
         { status: 400 }
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -51,11 +52,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!appUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "NEXT_PUBLIC_APP_URL não configurado.",
+        },
+        { status: 500 }
+      );
+    }
+
     const planoData = getPlanoData(plano);
     const externalReference = `client_${clientId}_${plano}`;
-
-    // URL temporária válida para testes locais
-    const publicTestUrl = "https://google.com";
 
     const payload = {
       items: [
@@ -67,11 +75,11 @@ export async function POST(request: NextRequest) {
         },
       ],
       external_reference: externalReference,
-      notification_url: publicTestUrl,
+      notification_url: `${appUrl}/api/mercadopago/webhook`,
       back_urls: {
-        success: publicTestUrl,
-        failure: publicTestUrl,
-        pending: publicTestUrl,
+        success: `${appUrl}/planos?status=success`,
+        failure: `${appUrl}/planos?status=failure`,
+        pending: `${appUrl}/planos?status=pending`,
       },
       auto_return: "approved",
     };

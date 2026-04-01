@@ -11,14 +11,14 @@ const supabaseAdmin = createClient(
 
 function parseExternalReference(externalReference: string | null | undefined) {
   const value = String(externalReference || "");
-  const match = value.match(/^empresa_(\d+)_(essencial|full)$/);
+  const match = value.match(/^client_(\d+)_(essencial|full)$/);
 
   if (!match) {
     return null;
   }
 
   return {
-    empresaId: Number(match[1]),
+    clientId: Number(match[1]),
     plano: match[2] as "essencial" | "full",
   };
 }
@@ -26,7 +26,6 @@ function parseExternalReference(externalReference: string | null | undefined) {
 function getPlanoUpdate(plano: "essencial" | "full") {
   if (plano === "essencial") {
     return {
-      payment_status: "paid",
       plan_type: "essencial",
       notes_limit: 10,
       is_blocked: false,
@@ -34,7 +33,6 @@ function getPlanoUpdate(plano: "essencial" | "full") {
   }
 
   return {
-    payment_status: "paid",
     plan_type: "full",
     notes_limit: 999999,
     is_blocked: false,
@@ -107,18 +105,18 @@ export async function POST(request: NextRequest) {
     const planoUpdate = getPlanoUpdate(parsed.plano);
 
     const { error } = await supabaseAdmin
-      .from("partner_companies")
+      .from("clients")
       .update(planoUpdate)
-      .eq("id", parsed.empresaId);
+      .eq("id", parsed.clientId);
 
     if (error) {
-      console.log("Erro ao liberar plano da empresa:", error);
+      console.log("Erro ao liberar plano do cliente:", error);
       return NextResponse.json({ success: false }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      empresaId: parsed.empresaId,
+      clientId: parsed.clientId,
       plano: parsed.plano,
     });
   } catch (error) {
