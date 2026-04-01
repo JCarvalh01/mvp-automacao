@@ -4,9 +4,20 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getPartnerCompanySession } from "@/lib/session";
+
+type CheckoutResponse = {
+  success: boolean;
+  init_point?: string;
+  sandbox_init_point?: string;
+  message?: string;
+};
 
 export default function HomePage() {
   const [viewportWidth, setViewportWidth] = useState(1200);
+  const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
+  const [mensagem, setMensagem] = useState("");
+  const [tipoMensagem, setTipoMensagem] = useState<"sucesso" | "erro" | "aviso" | "">("");
 
   useEffect(() => {
     const atualizarTela = () => {
@@ -20,6 +31,50 @@ export default function HomePage() {
   }, []);
 
   const isMobile = viewportWidth <= 768;
+
+  async function assinarPlano(plano: "essencial" | "full") {
+    try {
+      setLoadingPlano(plano);
+      setMensagem("");
+      setTipoMensagem("");
+
+      const empresaSession = getPartnerCompanySession();
+
+      if (!empresaSession?.id) {
+        setMensagem("Faça login como empresa antes de assinar um plano.");
+        setTipoMensagem("erro");
+        setLoadingPlano("");
+        return;
+      }
+
+      const response = await fetch("/api/mercadopago/criar-preferencia", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          empresaId: empresaSession.id,
+          plano,
+        }),
+      });
+
+      const result: CheckoutResponse = await response.json();
+
+      if (!response.ok || !result.success || !result.init_point) {
+        setMensagem(result.message || "Não foi possível iniciar o pagamento.");
+        setTipoMensagem("erro");
+        setLoadingPlano("");
+        return;
+      }
+
+      window.location.href = result.init_point;
+    } catch (error) {
+      console.log("Erro ao iniciar pagamento:", error);
+      setMensagem("Erro inesperado ao iniciar pagamento.");
+      setTipoMensagem("erro");
+      setLoadingPlano("");
+    }
+  }
 
   return (
     <main style={pageStyle}>
@@ -63,17 +118,37 @@ export default function HomePage() {
               Entrar
             </Link>
 
-            <Link
-              href="/checkout?plano=full"
+            <button
+              type="button"
+              onClick={() => assinarPlano("full")}
+              disabled={loadingPlano !== ""}
               style={{
-                ...navPrimaryStyle,
+                ...navPrimaryButtonStyle,
                 width: isMobile ? "100%" : "auto",
+                opacity: loadingPlano !== "" ? 0.78 : 1,
+                cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
               }}
             >
-              Assinar agora
-            </Link>
+              {loadingPlano === "full" ? "Redirecionando..." : "Assinar agora"}
+            </button>
           </nav>
         </header>
+
+        {mensagem && (
+          <div
+            style={{
+              ...messageStyle,
+              ...(tipoMensagem === "sucesso"
+                ? successMessageStyle
+                : tipoMensagem === "aviso"
+                ? warningMessageStyle
+                : errorMessageStyle),
+              marginBottom: isMobile ? "18px" : "20px",
+            }}
+          >
+            {mensagem}
+          </div>
+        )}
 
         <section
           style={{
@@ -124,25 +199,35 @@ export default function HomePage() {
                 gap: isMobile ? "10px" : "12px",
               }}
             >
-              <Link
-                href="/checkout?plano=full"
+              <button
+                type="button"
+                onClick={() => assinarPlano("full")}
+                disabled={loadingPlano !== ""}
                 style={{
                   ...heroPrimaryButtonStyle,
                   width: isMobile ? "100%" : "auto",
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                Assinar plano Full
-              </Link>
+                {loadingPlano === "full" ? "Redirecionando..." : "Assinar plano Full"}
+              </button>
 
-              <Link
-                href="/checkout?plano=essencial"
+              <button
+                type="button"
+                onClick={() => assinarPlano("essencial")}
+                disabled={loadingPlano !== ""}
                 style={{
-                  ...heroSecondaryButtonStyle,
+                  ...heroSecondaryButtonButtonStyle,
                   width: isMobile ? "100%" : "auto",
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                Começar com Essencial
-              </Link>
+                {loadingPlano === "essencial"
+                  ? "Redirecionando..."
+                  : "Começar com Essencial"}
+              </button>
 
               <Link
                 href="/login"
@@ -391,9 +476,20 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <Link href="/checkout?plano=essencial" style={planButtonStyle}>
-                Assinar Essencial
-              </Link>
+              <button
+                type="button"
+                onClick={() => assinarPlano("essencial")}
+                disabled={loadingPlano !== ""}
+                style={{
+                  ...planButtonButtonStyle,
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
+                }}
+              >
+                {loadingPlano === "essencial"
+                  ? "Redirecionando..."
+                  : "Assinar Essencial"}
+              </button>
             </article>
 
             <article
@@ -436,9 +532,18 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <Link href="/checkout?plano=full" style={planHighlightButtonStyle}>
-                Assinar Full
-              </Link>
+              <button
+                type="button"
+                onClick={() => assinarPlano("full")}
+                disabled={loadingPlano !== ""}
+                style={{
+                  ...planHighlightButtonButtonStyle,
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
+                }}
+              >
+                {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
+              </button>
             </article>
 
             <article
@@ -466,23 +571,25 @@ export default function HomePage() {
                     color: "#bfdbfe",
                   }}
                 >
-                  Sob consulta
+                  R$ 30/mês + R$ 7 por cliente ativo
                 </div>
                 <p style={planDescriptionStyle}>
-                  Ideal para empresas parceiras e escritórios que gerenciam mais
-                  de um cliente. A ativação é feita pelo administrador.
+                  Ideal para empresas parceiras e escritórios que operam com múltiplos
+                  clientes, cobrança escalável e emissão ilimitada.
                 </p>
               </div>
 
               <div style={planListStyle}>
+                <div style={planItemStyle}>✔ Emissões ilimitadas</div>
                 <div style={planItemStyle}>✔ Múltiplos clientes</div>
                 <div style={planItemStyle}>✔ Emissão em massa</div>
                 <div style={planItemStyle}>✔ Dashboard operacional</div>
                 <div style={planItemStyle}>✔ Estrutura escalável SaaS</div>
+                <div style={planItemStyle}>✔ Base fixa + valor por cliente ativo</div>
               </div>
 
               <a
-                href="https://wa.me/5511982966310"
+                href="https://wa.me/5511982966310?text=Olá!%20Quero%20falar%20sobre%20o%20plano%20Parceiro%20da%20MVP%20Automação%20Fiscal."
                 target="_blank"
                 rel="noopener noreferrer"
                 style={planButtonStyle}
@@ -593,25 +700,35 @@ export default function HomePage() {
                 flexDirection: isMobile ? "column" : "row",
               }}
             >
-              <Link
-                href="/checkout?plano=essencial"
+              <button
+                type="button"
+                onClick={() => assinarPlano("essencial")}
+                disabled={loadingPlano !== ""}
                 style={{
-                  ...ctaSecondaryButtonStyle,
+                  ...ctaSecondaryButtonButtonStyle,
                   width: isMobile ? "100%" : "auto",
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                Assinar Essencial
-              </Link>
+                {loadingPlano === "essencial"
+                  ? "Redirecionando..."
+                  : "Assinar Essencial"}
+              </button>
 
-              <Link
-                href="/checkout?plano=full"
+              <button
+                type="button"
+                onClick={() => assinarPlano("full")}
+                disabled={loadingPlano !== ""}
                 style={{
-                  ...ctaPrimaryButtonStyle,
+                  ...ctaPrimaryButtonButtonStyle,
                   width: isMobile ? "100%" : "auto",
+                  opacity: loadingPlano !== "" ? 0.78 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                Assinar Full
-              </Link>
+                {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
+              </button>
 
               <a
                 href="https://wa.me/5511982966310"
@@ -733,17 +850,17 @@ const navLinkStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const navPrimaryStyle: React.CSSProperties = {
+const navPrimaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   padding: "12px 16px",
   borderRadius: "14px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 700,
   boxShadow: "0 12px 28px rgba(37,99,235,0.30)",
+  border: "none",
 };
 
 const heroSectionStyle: React.CSSProperties = {
@@ -806,20 +923,19 @@ const heroPrimaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   padding: "15px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
+  border: "none",
 };
 
-const heroSecondaryButtonStyle: React.CSSProperties = {
+const heroSecondaryButtonButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   padding: "15px 18px",
   borderRadius: "16px",
   background: "rgba(15,23,42,0.88)",
@@ -1151,18 +1267,32 @@ const planButtonStyle: React.CSSProperties = {
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
 };
 
-const planHighlightButtonStyle: React.CSSProperties = {
+const planButtonButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   width: "100%",
-  textDecoration: "none",
+  padding: "14px 18px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+  color: "#ffffff",
+  fontWeight: 800,
+  boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
+  border: "none",
+};
+
+const planHighlightButtonButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(34,197,94,0.24)",
+  border: "none",
 };
 
 const salesSectionStyle: React.CSSProperties = {
@@ -1284,24 +1414,23 @@ const ctaButtonsStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const ctaPrimaryButtonStyle: React.CSSProperties = {
+const ctaPrimaryButtonButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
+  border: "none",
 };
 
-const ctaSecondaryButtonStyle: React.CSSProperties = {
+const ctaSecondaryButtonButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  textDecoration: "none",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "rgba(15,23,42,0.88)",
@@ -1321,4 +1450,29 @@ const ctaGhostBlueButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(59,130,246,0.18)",
   color: "#dbeafe",
   fontWeight: 700,
+};
+
+const messageStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  borderRadius: "16px",
+  fontSize: "14px",
+  border: "1px solid transparent",
+};
+
+const errorMessageStyle: React.CSSProperties = {
+  background: "rgba(239,68,68,0.12)",
+  border: "1px solid rgba(239,68,68,0.22)",
+  color: "#fecaca",
+};
+
+const successMessageStyle: React.CSSProperties = {
+  background: "rgba(16,185,129,0.12)",
+  border: "1px solid rgba(16,185,129,0.22)",
+  color: "#bbf7d0",
+};
+
+const warningMessageStyle: React.CSSProperties = {
+  background: "rgba(245,158,11,0.12)",
+  border: "1px solid rgba(245,158,11,0.22)",
+  color: "#fde68a",
 };
