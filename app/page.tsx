@@ -4,20 +4,9 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getPartnerCompanySession } from "@/lib/session";
-
-type CheckoutResponse = {
-  success: boolean;
-  init_point?: string;
-  sandbox_init_point?: string;
-  message?: string;
-};
 
 export default function HomePage() {
   const [viewportWidth, setViewportWidth] = useState(1200);
-  const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
-  const [mensagem, setMensagem] = useState("");
-  const [tipoMensagem, setTipoMensagem] = useState<"sucesso" | "erro" | "aviso" | "">("");
 
   useEffect(() => {
     const atualizarTela = () => {
@@ -31,50 +20,8 @@ export default function HomePage() {
   }, []);
 
   const isMobile = viewportWidth <= 768;
-
-  async function assinarPlano(plano: "essencial" | "full") {
-    try {
-      setLoadingPlano(plano);
-      setMensagem("");
-      setTipoMensagem("");
-
-      const empresaSession = getPartnerCompanySession();
-
-      if (!empresaSession?.id) {
-        setMensagem("Faça login como empresa antes de assinar um plano.");
-        setTipoMensagem("erro");
-        setLoadingPlano("");
-        return;
-      }
-
-      const response = await fetch("/api/mercadopago/criar-preferencia", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          empresaId: empresaSession.id,
-          plano,
-        }),
-      });
-
-      const result: CheckoutResponse = await response.json();
-
-      if (!response.ok || !result.success || !result.init_point) {
-        setMensagem(result.message || "Não foi possível iniciar o pagamento.");
-        setTipoMensagem("erro");
-        setLoadingPlano("");
-        return;
-      }
-
-      window.location.href = result.init_point;
-    } catch (error) {
-      console.log("Erro ao iniciar pagamento:", error);
-      setMensagem("Erro inesperado ao iniciar pagamento.");
-      setTipoMensagem("erro");
-      setLoadingPlano("");
-    }
-  }
+  const whatsappParceiroLink =
+    "https://wa.me/5511982966310?text=Olá!%20Quero%20falar%20sobre%20o%20plano%20Parceiro%20da%20MVP%20Automação%20Fiscal.";
 
   return (
     <main style={pageStyle}>
@@ -118,37 +65,17 @@ export default function HomePage() {
               Entrar
             </Link>
 
-            <button
-              type="button"
-              onClick={() => assinarPlano("full")}
-              disabled={loadingPlano !== ""}
+            <Link
+              href="/cadastro-cliente?plano=full"
               style={{
-                ...navPrimaryButtonStyle,
+                ...navPrimaryStyle,
                 width: isMobile ? "100%" : "auto",
-                opacity: loadingPlano !== "" ? 0.78 : 1,
-                cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
               }}
             >
-              {loadingPlano === "full" ? "Redirecionando..." : "Assinar agora"}
-            </button>
+              Assinar agora
+            </Link>
           </nav>
         </header>
-
-        {mensagem && (
-          <div
-            style={{
-              ...messageStyle,
-              ...(tipoMensagem === "sucesso"
-                ? successMessageStyle
-                : tipoMensagem === "aviso"
-                ? warningMessageStyle
-                : errorMessageStyle),
-              marginBottom: isMobile ? "18px" : "20px",
-            }}
-          >
-            {mensagem}
-          </div>
-        )}
 
         <section
           style={{
@@ -199,35 +126,25 @@ export default function HomePage() {
                 gap: isMobile ? "10px" : "12px",
               }}
             >
-              <button
-                type="button"
-                onClick={() => assinarPlano("full")}
-                disabled={loadingPlano !== ""}
+              <Link
+                href="/cadastro-cliente?plano=full"
                 style={{
                   ...heroPrimaryButtonStyle,
                   width: isMobile ? "100%" : "auto",
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                {loadingPlano === "full" ? "Redirecionando..." : "Assinar plano Full"}
-              </button>
+                Assinar plano Full
+              </Link>
 
-              <button
-                type="button"
-                onClick={() => assinarPlano("essencial")}
-                disabled={loadingPlano !== ""}
+              <Link
+                href="/cadastro-cliente?plano=essencial"
                 style={{
-                  ...heroSecondaryButtonButtonStyle,
+                  ...heroSecondaryButtonStyle,
                   width: isMobile ? "100%" : "auto",
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                {loadingPlano === "essencial"
-                  ? "Redirecionando..."
-                  : "Começar com Essencial"}
-              </button>
+                Começar com Essencial
+              </Link>
 
               <Link
                 href="/login"
@@ -306,9 +223,9 @@ export default function HomePage() {
               </div>
 
               <div style={panelFooterStyle}>
-                Escolha um plano, avance para o checkout e ative sua operação
-                fiscal com um fluxo mais direto. Para empresas e escritórios, a
-                ativação é feita pelo administrador.
+                Escolha um plano, avance para o cadastro e entre no fluxo de
+                ativação. Para empresas e escritórios, o contato inicial é feito
+                pelo WhatsApp.
               </div>
             </div>
           </div>
@@ -425,8 +342,8 @@ export default function HomePage() {
                 lineHeight: isMobile ? 1.7 : 1.8,
               }}
             >
-              Assine online, avance para o checkout e ative o sistema conforme a
-              necessidade da sua operação.
+              Escolha seu plano e siga para o cadastro conforme a necessidade da
+              sua operação.
             </p>
           </div>
 
@@ -476,20 +393,9 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => assinarPlano("essencial")}
-                disabled={loadingPlano !== ""}
-                style={{
-                  ...planButtonButtonStyle,
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
-                }}
-              >
-                {loadingPlano === "essencial"
-                  ? "Redirecionando..."
-                  : "Assinar Essencial"}
-              </button>
+              <Link href="/cadastro-cliente?plano=essencial" style={planButtonStyle}>
+                Assinar Essencial
+              </Link>
             </article>
 
             <article
@@ -532,18 +438,9 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => assinarPlano("full")}
-                disabled={loadingPlano !== ""}
-                style={{
-                  ...planHighlightButtonButtonStyle,
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
-                }}
-              >
-                {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
-              </button>
+              <Link href="/cadastro-cliente?plano=full" style={planHighlightButtonStyle}>
+                Assinar Full
+              </Link>
             </article>
 
             <article
@@ -589,7 +486,7 @@ export default function HomePage() {
               </div>
 
               <a
-                href="https://wa.me/5511982966310?text=Olá!%20Quero%20falar%20sobre%20o%20plano%20Parceiro%20da%20MVP%20Automação%20Fiscal."
+                href={whatsappParceiroLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={planButtonStyle}
@@ -656,9 +553,9 @@ export default function HomePage() {
               <div style={salesItemStyle}>
                 <strong style={salesItemTitleStyle}>Ativação mais direta</strong>
                 <p style={salesItemTextStyle}>
-                  O usuário escolhe o plano, segue para o checkout e entra no
-                  fluxo de ativação sem depender de atendimento manual. Para
-                  empresas parceiras, o contato inicial passa pelo administrador.
+                  O usuário escolhe o plano, segue para o cadastro e entra no
+                  fluxo de ativação. Para empresas parceiras, o contato inicial
+                  passa pelo administrador.
                 </p>
               </div>
             </div>
@@ -683,11 +580,11 @@ export default function HomePage() {
                   lineHeight: isMobile ? 1.15 : 1.2,
                 }}
               >
-                Escolha seu plano e avance para o checkout
+                Escolha seu plano e avance para o cadastro
               </h2>
               <p style={ctaTextStyle}>
                 Se você quer automatizar a emissão de notas e operar com mais
-                presença de produto, este é o momento de ativar sua assinatura.
+                presença de produto, este é o momento de iniciar sua assinatura.
                 Para empresas e escritórios, a criação é feita pelo
                 administrador.
               </p>
@@ -700,38 +597,28 @@ export default function HomePage() {
                 flexDirection: isMobile ? "column" : "row",
               }}
             >
-              <button
-                type="button"
-                onClick={() => assinarPlano("essencial")}
-                disabled={loadingPlano !== ""}
+              <Link
+                href="/cadastro-cliente?plano=essencial"
                 style={{
-                  ...ctaSecondaryButtonButtonStyle,
+                  ...ctaSecondaryButtonStyle,
                   width: isMobile ? "100%" : "auto",
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                {loadingPlano === "essencial"
-                  ? "Redirecionando..."
-                  : "Assinar Essencial"}
-              </button>
+                Assinar Essencial
+              </Link>
 
-              <button
-                type="button"
-                onClick={() => assinarPlano("full")}
-                disabled={loadingPlano !== ""}
+              <Link
+                href="/cadastro-cliente?plano=full"
                 style={{
-                  ...ctaPrimaryButtonButtonStyle,
+                  ...ctaPrimaryButtonStyle,
                   width: isMobile ? "100%" : "auto",
-                  opacity: loadingPlano !== "" ? 0.78 : 1,
-                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
                 }}
               >
-                {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
-              </button>
+                Assinar Full
+              </Link>
 
               <a
-                href="https://wa.me/5511982966310"
+                href={whatsappParceiroLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -850,17 +737,17 @@ const navLinkStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const navPrimaryButtonStyle: React.CSSProperties = {
+const navPrimaryStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textDecoration: "none",
   padding: "12px 16px",
   borderRadius: "14px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 700,
   boxShadow: "0 12px 28px rgba(37,99,235,0.30)",
-  border: "none",
 };
 
 const heroSectionStyle: React.CSSProperties = {
@@ -923,19 +810,20 @@ const heroPrimaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textDecoration: "none",
   padding: "15px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
-  border: "none",
 };
 
-const heroSecondaryButtonButtonStyle: React.CSSProperties = {
+const heroSecondaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textDecoration: "none",
   padding: "15px 18px",
   borderRadius: "16px",
   background: "rgba(15,23,42,0.88)",
@@ -1267,32 +1155,18 @@ const planButtonStyle: React.CSSProperties = {
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
 };
 
-const planButtonButtonStyle: React.CSSProperties = {
+const planHighlightButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   width: "100%",
-  padding: "14px 18px",
-  borderRadius: "16px",
-  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-  color: "#ffffff",
-  fontWeight: 800,
-  boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
-  border: "none",
-};
-
-const planHighlightButtonButtonStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "100%",
+  textDecoration: "none",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(34,197,94,0.24)",
-  border: "none",
 };
 
 const salesSectionStyle: React.CSSProperties = {
@@ -1414,23 +1288,24 @@ const ctaButtonsStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const ctaPrimaryButtonButtonStyle: React.CSSProperties = {
+const ctaPrimaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textDecoration: "none",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#ffffff",
   fontWeight: 800,
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
-  border: "none",
 };
 
-const ctaSecondaryButtonButtonStyle: React.CSSProperties = {
+const ctaSecondaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  textDecoration: "none",
   padding: "14px 18px",
   borderRadius: "16px",
   background: "rgba(15,23,42,0.88)",
@@ -1450,29 +1325,4 @@ const ctaGhostBlueButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(59,130,246,0.18)",
   color: "#dbeafe",
   fontWeight: 700,
-};
-
-const messageStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  borderRadius: "16px",
-  fontSize: "14px",
-  border: "1px solid transparent",
-};
-
-const errorMessageStyle: React.CSSProperties = {
-  background: "rgba(239,68,68,0.12)",
-  border: "1px solid rgba(239,68,68,0.22)",
-  color: "#fecaca",
-};
-
-const successMessageStyle: React.CSSProperties = {
-  background: "rgba(16,185,129,0.12)",
-  border: "1px solid rgba(16,185,129,0.22)",
-  color: "#bbf7d0",
-};
-
-const warningMessageStyle: React.CSSProperties = {
-  background: "rgba(245,158,11,0.12)",
-  border: "1px solid rgba(245,158,11,0.22)",
-  color: "#fde68a",
 };
