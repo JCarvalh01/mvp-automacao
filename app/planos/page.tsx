@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPartnerCompanySession } from "@/lib/session";
+import { getClientSession } from "@/lib/session";
 
 type CheckoutResponse = {
   success: boolean;
@@ -11,9 +11,6 @@ type CheckoutResponse = {
 };
 
 export default function PlanosPage() {
-  const whatsappLink =
-    "https://wa.me/5511982966310?text=Olá!%20Quero%20falar%20sobre%20o%20plano%20Parceiro%20da%20MVP%20Automação%20Fiscal.";
-
   const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
   const [mensagem, setMensagem] = useState("");
   const [tipoMensagem, setTipoMensagem] = useState<
@@ -50,10 +47,10 @@ export default function PlanosPage() {
       setMensagem("");
       setTipoMensagem("");
 
-      const empresaSession = getPartnerCompanySession();
+      const clientSession = getClientSession();
 
-      if (!empresaSession?.id) {
-        setMensagem("Faça login como empresa antes de assinar um plano.");
+      if (!clientSession?.id) {
+        setMensagem("Faça login como cliente antes de assinar um plano.");
         setTipoMensagem("erro");
         setLoadingPlano("");
         return;
@@ -65,7 +62,7 @@ export default function PlanosPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          empresaId: empresaSession.id,
+          clientId: clientSession.id,
           plano,
         }),
       });
@@ -180,37 +177,6 @@ export default function PlanosPage() {
               {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
             </button>
           </div>
-
-          <div style={cardStyle}>
-            <div style={pillRowStyle}>
-              <span style={topPillStyle}>Empresas e escritórios</span>
-            </div>
-
-            <h2 style={planTitleStyle}>Parceiro</h2>
-            <p style={priceConsultStyle}>R$ 30/mês + R$ 7 por cliente ativo</p>
-            <p style={planTextStyle}>
-              Ideal para empresas parceiras e escritórios que operam com múltiplos
-              clientes, cobrança escalável e emissão ilimitada.
-            </p>
-
-            <ul style={listStyle}>
-              <li style={listItemStyle}>✔ Emissões ilimitadas</li>
-              <li style={listItemStyle}>✔ Múltiplos clientes</li>
-              <li style={listItemStyle}>✔ Emissão em massa</li>
-              <li style={listItemStyle}>✔ Dashboard operacional</li>
-              <li style={listItemStyle}>✔ Estrutura escalável SaaS</li>
-              <li style={listItemStyle}>✔ Base fixa + valor por cliente ativo</li>
-            </ul>
-
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noreferrer"
-              style={partnerButtonStyle}
-            >
-              Falar com o consultor
-            </a>
-          </div>
         </section>
       </div>
     </main>
@@ -252,7 +218,7 @@ const subtitleStyle: React.CSSProperties = {
 
 const plansGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: "18px",
 };
 
@@ -314,15 +280,6 @@ const priceStyle: React.CSSProperties = {
   marginBottom: "12px",
 };
 
-const priceConsultStyle: React.CSSProperties = {
-  fontSize: "30px",
-  fontWeight: 800,
-  margin: 0,
-  marginBottom: "12px",
-  color: "#bfdbfe",
-  lineHeight: 1.3,
-};
-
 const planTextStyle: React.CSSProperties = {
   fontSize: "15px",
   color: "#e2e8f0",
@@ -374,19 +331,6 @@ const buttonPrimaryStyle: React.CSSProperties = {
   textDecoration: "none",
   fontWeight: 800,
   border: "none",
-  fontSize: "16px",
-};
-
-const partnerButtonStyle: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "center",
-  padding: "14px 16px",
-  borderRadius: "14px",
-  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-  color: "#fff",
-  textDecoration: "none",
-  fontWeight: 800,
   fontSize: "16px",
 };
 

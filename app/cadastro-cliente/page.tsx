@@ -9,6 +9,10 @@ type NovoUsuario = {
   id: number;
 };
 
+type NovoCliente = {
+  id: number;
+};
+
 type EmpresaParceira = {
   id: number;
   name: string;
@@ -249,6 +253,8 @@ function CadastroClientePageContent() {
         return;
       }
 
+      const novoCliente = clienteCriado as NovoCliente;
+
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -256,6 +262,24 @@ function CadastroClientePageContent() {
           name: name.trim(),
           email: emailNormalizado,
           user_type: "client",
+          is_active: true,
+        })
+      );
+
+      localStorage.setItem(
+        "client",
+        JSON.stringify({
+          id: novoCliente.id,
+          name: name.trim(),
+          email: emailNormalizado,
+          cnpj: cnpjLimpo || "",
+          phone: phone.trim() || "",
+          address: address.trim() || "",
+          password: nationalEmitterPassword.trim() || null,
+          client_type: undefined,
+          mei_created_at: meiCreatedAt || null,
+          is_active: true,
+          partner_company_id: partnerCompanyId,
         })
       );
 
