@@ -209,7 +209,6 @@ function CheckoutContent() {
                 customization={{
                   paymentMethods: {
                     creditCard: "all",
-                    debitCard: "none",
                     ticket: "all",
                     bankTransfer: "all",
                   },
