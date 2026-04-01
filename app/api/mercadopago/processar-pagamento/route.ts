@@ -133,7 +133,8 @@ export async function POST(request: NextRequest) {
       transaction_amount: transactionAmount,
       description: planoData.title,
       payment_method_id: paymentMethodId,
-      installments: Number.isFinite(installments) && installments > 0 ? installments : 1,
+      installments:
+        Number.isFinite(installments) && installments > 0 ? installments : 1,
       payer: {
         email: payerEmail,
       },
@@ -149,11 +150,18 @@ export async function POST(request: NextRequest) {
       paymentPayload.issuer_id = issuerId;
     }
 
+    const idempotencyKey =
+      crypto.randomUUID?.() ||
+      `${clientId}-${plano}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
     const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
+        "X-Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(paymentPayload),
       cache: "no-store",
@@ -202,9 +210,11 @@ export async function POST(request: NextRequest) {
       status,
       status_detail: statusDetail,
       id: paymentResult?.id || null,
-      qr_code: paymentResult?.point_of_interaction?.transaction_data?.qr_code || null,
+      qr_code:
+        paymentResult?.point_of_interaction?.transaction_data?.qr_code || null,
       qr_code_base64:
-        paymentResult?.point_of_interaction?.transaction_data?.qr_code_base64 || null,
+        paymentResult?.point_of_interaction?.transaction_data?.qr_code_base64 ||
+        null,
       ticket_url:
         paymentResult?.transaction_details?.external_resource_url || null,
     });
