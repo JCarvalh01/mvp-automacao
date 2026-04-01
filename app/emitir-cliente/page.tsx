@@ -881,9 +881,9 @@ export default function EmitirClientePage() {
                     </div>
 
                     <div style={fieldStyle}>
-                      <label style={labelStyle}>Cliente</label>
+                      <label style={labelStyle}>Dados do emitente</label>
                       <div style={infoInputStyle}>
-                        {cliente?.name || "Cliente não identificado"}
+                        {cliente?.name || "Emitente não identificado"}
                       </div>
                     </div>
 

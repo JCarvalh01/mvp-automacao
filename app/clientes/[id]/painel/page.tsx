@@ -185,6 +185,42 @@ function getStatusMeta(status?: string | null) {
   };
 }
 
+function getClienteStatusPill(isActive?: boolean | null) {
+  if (isActive === false) {
+    return {
+      label: "Cliente inativo",
+      bg: "rgba(239, 68, 68, 0.18)",
+      border: "1px solid rgba(239, 68, 68, 0.34)",
+      color: "#fecaca",
+    };
+  }
+
+  return {
+    label: "Cliente ativo",
+    bg: "rgba(16, 185, 129, 0.16)",
+    border: "1px solid rgba(16, 185, 129, 0.30)",
+    color: "#bbf7d0",
+  };
+}
+
+function getMeiPill(isMei?: boolean | null) {
+  if (isMei === false) {
+    return {
+      label: "Não MEI",
+      bg: "rgba(245, 158, 11, 0.18)",
+      border: "1px solid rgba(245, 158, 11, 0.32)",
+      color: "#fde68a",
+    };
+  }
+
+  return {
+    label: "MEI",
+    bg: "rgba(37, 99, 235, 0.18)",
+    border: "1px solid rgba(59, 130, 246, 0.30)",
+    color: "#bfdbfe",
+  };
+}
+
 export default function ClientePainelPage() {
   const router = useRouter();
   const params = useParams();
@@ -339,6 +375,9 @@ export default function ClientePainelPage() {
     return notas[0] || null;
   }, [notas]);
 
+  const clienteStatusPill = getClienteStatusPill(cliente?.is_active);
+  const meiPill = getMeiPill(cliente?.is_mei);
+
   if (loadingAccess) {
     return <ProtectedPageLoader label="Validando acesso..." />;
   }
@@ -370,13 +409,29 @@ export default function ClientePainelPage() {
                 </p>
 
                 <div style={heroPillsStyle}>
-                  <span style={heroPillStyle}>
-                    {cliente?.is_active === false ? "Cliente inativo" : "Cliente ativo"}
+                  <span
+                    style={{
+                      ...heroPillStyle,
+                      background: clienteStatusPill.bg,
+                      border: clienteStatusPill.border,
+                      color: clienteStatusPill.color,
+                    }}
+                  >
+                    {clienteStatusPill.label}
                   </span>
-                  <span style={heroPillStyle}>
-                    {cliente?.is_mei === false ? "Não MEI" : "MEI"}
+
+                  <span
+                    style={{
+                      ...heroPillStyle,
+                      background: meiPill.bg,
+                      border: meiPill.border,
+                      color: meiPill.color,
+                    }}
+                  >
+                    {meiPill.label}
                   </span>
-                  <span style={heroPillStyle}>{notas.length} nota(s)</span>
+
+                  <span style={heroPillStyleNeutral}>{notas.length} nota(s)</span>
                 </div>
               </div>
 
@@ -425,7 +480,12 @@ export default function ClientePainelPage() {
 
             <div style={summaryCardStyle}>
               <span style={summaryLabelStyle}>Status do cliente</span>
-              <strong style={summaryValueStyle}>
+              <strong
+                style={{
+                  ...summaryValueStyle,
+                  color: cliente?.is_active === false ? "#fecaca" : "#bbf7d0",
+                }}
+              >
                 {cliente?.is_active === false ? "Inativo" : "Ativo"}
               </strong>
             </div>
@@ -474,7 +534,12 @@ export default function ClientePainelPage() {
 
                   <div style={infoBoxStyle}>
                     <span style={infoLabelStyle}>É MEI?</span>
-                    <strong style={infoValueStyle}>
+                    <strong
+                      style={{
+                        ...infoValueStyle,
+                        color: cliente?.is_mei === false ? "#fde68a" : "#bfdbfe",
+                      }}
+                    >
                       {cliente?.is_mei === false ? "Não" : "Sim"}
                     </strong>
                   </div>
@@ -826,6 +891,16 @@ const heroPillsStyle: CSSProperties = {
 };
 
 const heroPillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 12px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 700,
+};
+
+const heroPillStyleNeutral: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",

@@ -2,16 +2,22 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
-import ProtectedPageLoader from "@/components/ProtectedPageLoader";
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
+import ProtectedPageLoader from "@/components/ProtectedPageLoader";
 import { getPartnerCompanySession } from "@/lib/session";
 import EmpresaPageShell from "@/components/EmpresaPageShell";
 
-type Empresa = {
+type EmpresaSessao = {
   id: number;
   name: string;
+  cnpj: string;
+  email: string;
+  phone: string;
+  address: string;
+  user_id: number;
 };
 
 type Cliente = {
@@ -21,29 +27,12 @@ type Cliente = {
   email: string | null;
   phone: string | null;
   address: string | null;
-  is_mei: boolean | null;
-  mei_created_at: string | null;
-  is_active: boolean | null;
-  partner_company_id: number | null;
+  client_type?: string | null;
+  is_mei?: boolean | null;
+  is_active?: boolean | null;
+  partner_company_id?: number | null;
+  created_at?: string | null;
 };
-
-type Nota = {
-  id: number;
-  created_at: string | null;
-  competency_date: string | null;
-  service_taker: string | null;
-  service_city: string | null;
-  service_value: number | null;
-  service_description: string | null;
-  status: string | null;
-  nfse_key?: string | null;
-  pdf_path?: string | null;
-  xml_path?: string | null;
-  pdf_url?: string | null;
-  xml_url?: string | null;
-};
-
-const LIMITE_MEI = 81000;
 
 function limparDocumento(valor?: string | null) {
   return String(valor || "").replace(/\D/g, "");
@@ -65,8 +54,7 @@ function mascararCnpj(valor?: string | null) {
   const numeros = limparDocumento(valor);
   if (numeros.length !== 14) return "Não informado";
 
-  return `${numeros.slice(0, 2)}.${numeros.slice(2, 5)}.*** /****-${numeros.slice(12)}`
-    .replace(" ", "");
+  return `${numeros.slice(0, 2)}.${numeros.slice(2, 5)}.***/****-${numeros.slice(12)}`;
 }
 
 function mascararEmail(valor?: string | null) {
@@ -97,263 +85,169 @@ function formatarTelefone(valor?: string | null) {
 }
 
 function formatarData(valor?: string | null) {
-  if (!valor) return "-";
+  if (!valor) return "Não informada";
 
-  if (valor.includes("T")) {
-    const data = new Date(valor);
-    if (!Number.isNaN(data.getTime())) {
-      return data.toLocaleDateString("pt-BR");
-    }
-  }
-
-  const partes = valor.split("-");
-  if (partes.length === 3) {
-    const [ano, mes, dia] = partes;
-    return `${dia}/${mes}/${ano}`;
+  const data = new Date(valor);
+  if (!Number.isNaN(data.getTime())) {
+    return data.toLocaleDateString("pt-BR");
   }
 
   return valor;
 }
 
-function formatarValor(valor?: number | null) {
-  return Number(valor || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
-function getArquivoUrl(nota: Nota, tipo: "pdf" | "xml") {
-  if (tipo === "pdf") {
-    return nota.pdf_url || nota.pdf_path || null;
-  }
-
-  return nota.xml_url || nota.xml_path || null;
-}
-
-function getStatusMeta(status?: string | null) {
-  const valor = String(status || "").toLowerCase();
-
-  if (valor.includes("success") || valor.includes("sucesso")) {
-    return {
-      label: "Emitida",
-      bg: "rgba(16, 185, 129, 0.16)",
-      border: "rgba(16, 185, 129, 0.28)",
-      color: "#bbf7d0",
-    };
-  }
-
-  if (valor.includes("processing")) {
-    return {
-      label: "Processando",
-      bg: "rgba(37, 99, 235, 0.16)",
-      border: "rgba(59, 130, 246, 0.28)",
-      color: "#bfdbfe",
-    };
-  }
-
-  if (valor.includes("pending")) {
-    return {
-      label: "Pendente",
-      bg: "rgba(245, 158, 11, 0.16)",
-      border: "rgba(245, 158, 11, 0.26)",
-      color: "#fde68a",
-    };
-  }
-
-  if (valor.includes("canceled") || valor.includes("cancelada")) {
-    return {
-      label: "Cancelada",
-      bg: "rgba(148, 163, 184, 0.18)",
-      border: "rgba(148, 163, 184, 0.28)",
-      color: "#e2e8f0",
-    };
-  }
-
-  if (valor.includes("error") || valor.includes("erro")) {
-    return {
-      label: "Erro",
-      bg: "rgba(239, 68, 68, 0.16)",
-      border: "rgba(239, 68, 68, 0.28)",
-      color: "#fecaca",
-    };
-  }
-
-  return {
-    label: status || "-",
-    bg: "rgba(148, 163, 184, 0.18)",
-    border: "rgba(148, 163, 184, 0.28)",
-    color: "#e2e8f0",
-  };
-}
-
-export default function ClientePainelPage() {
+export default function ClientesPage() {
   const router = useRouter();
-  const params = useParams();
   const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
 
-  const clienteId = Number(params?.id);
-
-  const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [notas, setNotas] = useState<Nota[]>([]);
+  const [empresa, setEmpresa] = useState<EmpresaSessao | null>(null);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
   const [mensagem, setMensagem] = useState("");
 
   useEffect(() => {
     if (!loadingAccess && authorized) {
-      carregarDados();
+      carregarPagina();
     }
-  }, [loadingAccess, authorized, clienteId]);
+  }, [loadingAccess, authorized]);
 
-  async function carregarDados() {
+  async function carregarPagina() {
     try {
       setLoading(true);
       setMensagem("");
 
-      const session = getPartnerCompanySession();
+      const empresaSessao = getPartnerCompanySession();
 
-      if (!session?.id) {
-        router.push("/login");
-        return;
-      }
-
-      if (!clienteId || Number.isNaN(clienteId)) {
-        setMensagem("Cliente inválido.");
+      if (!empresaSessao?.id) {
+        setMensagem("Empresa não identificada.");
         setLoading(false);
         return;
       }
 
-      setEmpresa({
-        id: session.id,
-        name: session.name,
-      });
+      setEmpresa(empresaSessao);
 
-      const { data: clienteData, error: clienteError } = await supabase
+      const { data, error } = await supabase
         .from("clients")
         .select("*")
-        .eq("id", clienteId)
-        .eq("partner_company_id", session.id)
-        .single();
+        .eq("partner_company_id", empresaSessao.id)
+        .order("id", { ascending: false });
 
-      if (clienteError || !clienteData) {
-        setMensagem("Cliente não encontrado.");
+      if (error) {
+        console.log("Erro ao carregar clientes:", error);
+        setMensagem("Erro ao carregar clientes.");
+        setClientes([]);
         setLoading(false);
         return;
       }
 
-      setCliente(clienteData as Cliente);
-
-      const { data: notasData, error: notasError } = await supabase
-        .from("invoices")
-        .select(`
-          id,
-          created_at,
-          competency_date,
-          service_taker,
-          service_city,
-          service_value,
-          service_description,
-          status,
-          nfse_key,
-          pdf_path,
-          xml_path,
-          pdf_url,
-          xml_url
-        `)
-        .eq("client_id", clienteId)
-        .eq("partner_company_id", session.id)
-        .order("created_at", { ascending: false });
-
-      if (notasError) {
-        console.log("Erro ao buscar notas do cliente:", notasError);
-        setMensagem("Não foi possível carregar as notas do cliente.");
-        setNotas([]);
-        setLoading(false);
-        return;
-      }
-
-      setNotas((notasData || []) as Nota[]);
+      setClientes((data || []) as Cliente[]);
       setLoading(false);
-    } catch (err) {
-      console.log(err);
-      setMensagem("Erro inesperado ao carregar o painel do cliente.");
+    } catch (error) {
+      console.log("Erro inesperado ao carregar clientes:", error);
+      setMensagem("Erro inesperado ao carregar clientes.");
       setLoading(false);
     }
   }
 
-  function abrirArquivo(url: string | null, tipo: "PDF" | "XML") {
-    if (!url) {
-      alert(`Esta nota ainda não possui ${tipo} disponível.`);
-      return;
-    }
-
-    window.open(url, "_blank");
+  function novoCliente() {
+    router.push("/clientes/novo");
   }
+
+  function abrirCliente(clienteId: number) {
+    router.push(`/clientes/${clienteId}/painel`);
+  }
+
+  const clientesFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+
+    if (!termo) return clientes;
+
+    return clientes.filter((cliente) => {
+      const nome = cliente.name?.toLowerCase() || "";
+      const cnpj = cliente.cnpj?.toLowerCase() || "";
+      const email = cliente.email?.toLowerCase() || "";
+      const telefone = cliente.phone?.toLowerCase() || "";
+      const endereco = cliente.address?.toLowerCase() || "";
+
+      return (
+        nome.includes(termo) ||
+        cnpj.includes(termo) ||
+        email.includes(termo) ||
+        telefone.includes(termo) ||
+        endereco.includes(termo)
+      );
+    });
+  }, [clientes, busca]);
 
   const resumo = useMemo(() => {
-    const anoAtual = new Date().getFullYear();
-
-    const notasAnoAtual = notas.filter((nota) => {
-      const base = nota.competency_date || nota.created_at;
-      if (!base) return false;
-      const data = new Date(base);
-      return !Number.isNaN(data.getTime()) && data.getFullYear() === anoAtual;
-    });
-
-    const faturamentoAno = notasAnoAtual.reduce((acc, nota) => {
-      if (String(nota.status || "").toLowerCase() !== "success") return acc;
-      return acc + Number(nota.service_value || 0);
-    }, 0);
-
-    const totalNotas = notas.length;
-
-    const totalNotasSuccess = notas.filter(
-      (nota) => String(nota.status || "").toLowerCase() === "success"
-    ).length;
-
-    const totalPendentes = notas.filter((nota) =>
-      String(nota.status || "").toLowerCase().includes("pending")
-    ).length;
-
-    const totalErros = notas.filter((nota) => {
-      const status = String(nota.status || "").toLowerCase();
-      return status.includes("error") || status.includes("erro");
-    }).length;
-
-    const percentualMei =
-      LIMITE_MEI > 0 ? Math.min((faturamentoAno / LIMITE_MEI) * 100, 100) : 0;
+    const total = clientes.length;
+    const ativos = clientes.filter((cliente) => cliente.is_active !== false).length;
+    const inativos = clientes.filter((cliente) => cliente.is_active === false).length;
+    const meis = clientes.filter((cliente) => cliente.is_mei === true).length;
 
     return {
-      anoAtual,
-      faturamentoAno,
-      totalNotas,
-      totalNotasSuccess,
-      totalPendentes,
-      totalErros,
-      percentualMei,
-      restanteMei: Math.max(LIMITE_MEI - faturamentoAno, 0),
-      excedeuMei: faturamentoAno > LIMITE_MEI,
+      total,
+      ativos,
+      inativos,
+      meis,
     };
-  }, [notas]);
+  }, [clientes]);
 
-  const ultimaNota = useMemo(() => {
-    return notas[0] || null;
-  }, [notas]);
+  function baixarXlsx() {
+    try {
+      const base = clientesFiltrados.length > 0 ? clientesFiltrados : clientes;
 
-  if (loadingAccess) {
-    return <ProtectedPageLoader label="Validando acesso..." />;
+      if (!base.length) {
+        alert("Não há clientes para exportar.");
+        return;
+      }
+
+      const dados = base.map((cliente) => ({
+        "ID do cliente": cliente.id,
+        "Nome": cliente.name || "",
+        "CNPJ": formatarCnpj(cliente.cnpj),
+        "Email": cliente.email || "",
+        "Telefone": formatarTelefone(cliente.phone),
+        "Endereço": cliente.address || "",
+        "Status": cliente.is_active === false ? "Inativo" : "Ativo",
+        "É MEI": cliente.is_mei === true ? "Sim" : "Não",
+        "Data de cadastro": formatarData(cliente.created_at),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dados);
+      const workbook = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
+
+      const nomeEmpresa = String(empresa?.name || "empresa")
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, "")
+        .replace(/\s+/g, "_");
+
+      const dataAtual = new Date();
+      const dia = String(dataAtual.getDate()).padStart(2, "0");
+      const mes = String(dataAtual.getMonth() + 1).padStart(2, "0");
+      const ano = dataAtual.getFullYear();
+
+      XLSX.writeFile(workbook, `clientes_${nomeEmpresa}_${dia}-${mes}-${ano}.xlsx`);
+    } catch (error) {
+      console.log("Erro ao exportar XLSX:", error);
+      alert("Não foi possível gerar o arquivo XLSX.");
+    }
   }
 
-  if (!authorized) return null;
+  if (loadingAccess) {
+    return <ProtectedPageLoader label="Validando acesso da empresa..." />;
+  }
 
-  if (loading) {
-    return <ProtectedPageLoader label="Carregando painel do cliente..." />;
+  if (!authorized) {
+    return null;
   }
 
   return (
     <EmpresaPageShell
-      title={cliente?.name || "Painel do Cliente"}
-      subtitle="Visão operacional do cliente, com faturamento, notas e acompanhamento fiscal."
+      title="Clientes"
+      subtitle={`Gerencie os clientes vinculados à empresa ${empresa?.name || "Empresa"}.`}
     >
       <div style={pageWrapStyle}>
         <div style={backgroundGlowTopStyle} />
@@ -364,22 +258,17 @@ export default function ClientePainelPage() {
             <div style={heroTopRowStyle}>
               <div style={heroLeftStyle}>
                 <p style={heroMiniStyle}>MVP_ AUTOMAÇÃO FISCAL</p>
-                <h1 style={heroTitleStyle}>{cliente?.name || "Cliente"}</h1>
+                <h1 style={heroTitleStyle}>Carteira de Clientes</h1>
                 <p style={heroSubtitleStyle}>
-                  Painel fiscal individual do cliente, com visão operacional,
-                  acompanhamento de faturamento, notas emitidas e acesso rápido às principais ações.
+                  Gerencie sua base de clientes com mais organização, acesso rápido ao painel
+                  individual e exibição mais protegida dos dados sensíveis.
                 </p>
 
                 <div style={heroPillsStyle}>
-                  <span style={heroPillStyle}>
-                    {cliente?.is_active === false ? "Cliente inativo" : "Cliente ativo"}
-                  </span>
-                  <span style={heroPillStyle}>
-                    {cliente?.is_mei === false ? "Não MEI" : "MEI"}
-                  </span>
-                  <span style={heroPillStyle}>
-                    {notas.length} nota(s)
-                  </span>
+                  <span style={heroPillStyle}>{resumo.total} clientes</span>
+                  <span style={heroPillStyle}>{resumo.ativos} ativos</span>
+                  <span style={heroPillStyle}>{resumo.inativos} inativos</span>
+                  <span style={heroPillStyle}>{resumo.meis} MEIs</span>
                 </div>
               </div>
 
@@ -388,348 +277,172 @@ export default function ClientePainelPage() {
                 <strong style={heroInfoValueStyle}>
                   {empresa?.name || "Área da Empresa"}
                 </strong>
+                <span style={heroInfoSubStyle}>
+                  {empresa?.cnpj ? formatarCnpj(empresa.cnpj) : "CNPJ não disponível"}
+                </span>
               </div>
+            </div>
+          </section>
+
+          <section style={summaryGridStyle}>
+            <div style={summaryCardStyle}>
+              <span style={summaryLabelStyle}>Total de clientes</span>
+              <strong style={summaryValueStyle}>{resumo.total}</strong>
+            </div>
+
+            <div style={summaryCardStyle}>
+              <span style={summaryLabelStyle}>Clientes ativos</span>
+              <strong style={summaryValueStyle}>{resumo.ativos}</strong>
+            </div>
+
+            <div style={summaryCardStyle}>
+              <span style={summaryLabelStyle}>Clientes inativos</span>
+              <strong style={summaryValueStyle}>{resumo.inativos}</strong>
+            </div>
+
+            <div style={summaryCardStyle}>
+              <span style={summaryLabelStyle}>Clientes MEI</span>
+              <strong style={summaryValueStyle}>{resumo.meis}</strong>
             </div>
           </section>
 
           {mensagem && (
-            <div style={{ ...messageStyle, ...errorMessageStyle }}>
-              {mensagem}
-            </div>
+            <div style={{ ...messageStyle, ...errorMessageStyle }}>{mensagem}</div>
           )}
 
-          <section style={summaryGridStyle}>
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Faturamento {resumo.anoAtual}</span>
-              <strong style={summaryValueStyle}>
-                {formatarValor(resumo.faturamentoAno)}
-              </strong>
+          <section style={toolbarCardStyle}>
+            <div style={searchWrapperStyle}>
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar cliente por nome, CNPJ, email, telefone ou endereço"
+                style={searchInputStyle}
+              />
             </div>
 
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Notas do cliente</span>
-              <strong style={summaryValueStyle}>{resumo.totalNotas}</strong>
-            </div>
+            <div style={toolbarButtonsStyle}>
+              <button onClick={baixarXlsx} style={exportButtonStyle}>
+                Baixar XLSX
+              </button>
 
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Notas com sucesso</span>
-              <strong style={summaryValueStyle}>{resumo.totalNotasSuccess}</strong>
-            </div>
+              <button onClick={novoCliente} style={newButtonStyle}>
+                Novo cliente
+              </button>
 
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Pendentes</span>
-              <strong style={summaryValueStyle}>{resumo.totalPendentes}</strong>
-            </div>
+              <Link href="/clientes/lote" style={secondaryToolbarButtonStyle}>
+                Cadastro em lote
+              </Link>
 
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Erros</span>
-              <strong style={summaryValueStyle}>{resumo.totalErros}</strong>
-            </div>
-
-            <div style={summaryCardStyle}>
-              <span style={summaryLabelStyle}>Status do cliente</span>
-              <strong style={summaryValueStyle}>
-                {cliente?.is_active === false ? "Inativo" : "Ativo"}
-              </strong>
+              <Link href="/dashboard-empresa" style={backButtonStyle}>
+                Voltar ao dashboard
+              </Link>
             </div>
           </section>
 
-          <section style={panelGridStyle}>
-            <div style={leftColumnStyle}>
-              <div style={infoCardStyle}>
-                <div style={sectionHeaderStyle}>
-                  <div>
-                    <h2 style={sectionTitleStyle}>Dados do cliente</h2>
-                    <p style={sectionSubtitleStyle}>
-                      Informações principais para operação fiscal e acompanhamento.
-                    </p>
-                  </div>
-                </div>
-
-                <div style={infoGridStyle}>
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>CNPJ</span>
-                    <strong style={infoValueStyle}>
-                      {mascararCnpj(cliente?.cnpj)}
-                    </strong>
-                  </div>
-
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>Email</span>
-                    <strong style={infoValueStyle}>
-                      {mascararEmail(cliente?.email)}
-                    </strong>
-                  </div>
-
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>Telefone</span>
-                    <strong style={infoValueStyle}>
-                      {formatarTelefone(cliente?.phone)}
-                    </strong>
-                  </div>
-
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>Endereço</span>
-                    <strong style={infoValueStyle}>
-                      {cliente?.address || "Não informado"}
-                    </strong>
-                  </div>
-
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>É MEI?</span>
-                    <strong style={infoValueStyle}>
-                      {cliente?.is_mei === false ? "Não" : "Sim"}
-                    </strong>
-                  </div>
-
-                  <div style={infoBoxStyle}>
-                    <span style={infoLabelStyle}>Abertura do MEI</span>
-                    <strong style={infoValueStyle}>
-                      {cliente?.mei_created_at
-                        ? formatarData(cliente.mei_created_at)
-                        : "Não informada"}
-                    </strong>
-                  </div>
-                </div>
-
-                <div style={actionsStyle}>
-                  <Link href={`/emitir?client_id=${clienteId}`} style={primaryActionStyle}>
-                    Emitir nota
-                  </Link>
-
-                  <Link href={`/clientes/${clienteId}`} style={secondaryActionStyle}>
-                    Editar cliente
-                  </Link>
-
-                  <Link href="/clientes" style={secondaryActionStyle}>
-                    Voltar para clientes
-                  </Link>
-                </div>
-              </div>
-
-              <div style={listCardStyle}>
-                <div style={sectionHeaderStyle}>
-                  <div>
-                    <h2 style={sectionTitleStyle}>Notas do cliente</h2>
-                    <p style={sectionSubtitleStyle}>
-                      Histórico de emissões vinculado a este cliente.
-                    </p>
-                  </div>
-                </div>
-
-                {notas.length === 0 ? (
-                  <div style={emptyStyle}>Nenhuma nota encontrada para este cliente.</div>
-                ) : (
-                  <div style={tableWrapperStyle}>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr>
-                          <th style={thStyle}>ID</th>
-                          <th style={thStyle}>Competência</th>
-                          <th style={thStyle}>Tomador</th>
-                          <th style={thStyle}>Cidade</th>
-                          <th style={thStyle}>Valor</th>
-                          <th style={thStyle}>Status</th>
-                          <th style={thStyle}>NFS-e</th>
-                          <th style={thStyle}>PDF</th>
-                          <th style={thStyle}>XML</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {notas.map((nota) => {
-                          const pdfUrl = getArquivoUrl(nota, "pdf");
-                          const xmlUrl = getArquivoUrl(nota, "xml");
-                          const statusMeta = getStatusMeta(nota.status);
-
-                          return (
-                            <tr key={nota.id}>
-                              <td style={tdStyle}>#{nota.id}</td>
-                              <td style={tdStyle}>
-                                {formatarData(nota.competency_date || nota.created_at)}
-                              </td>
-                              <td style={tdStyle}>
-                                {nota.service_taker ? formatarCnpj(nota.service_taker) : "-"}
-                              </td>
-                              <td style={tdStyle}>{nota.service_city || "-"}</td>
-                              <td style={tdStyle}>{formatarValor(nota.service_value)}</td>
-                              <td style={tdStyle}>
-                                <span
-                                  style={{
-                                    ...statusBadgeStyle,
-                                    backgroundColor: statusMeta.bg,
-                                    borderColor: statusMeta.border,
-                                    color: statusMeta.color,
-                                  }}
-                                >
-                                  {statusMeta.label}
-                                </span>
-                              </td>
-                              <td style={tdStyle}>{nota.nfse_key || "-"}</td>
-                              <td style={tdStyle}>
-                                {pdfUrl ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => abrirArquivo(pdfUrl, "PDF")}
-                                    style={linkButtonStyle}
-                                  >
-                                    Abrir PDF
-                                  </button>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
-                              <td style={tdStyle}>
-                                {xmlUrl ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => abrirArquivo(xmlUrl, "XML")}
-                                    style={linkButtonStyle}
-                                  >
-                                    Abrir XML
-                                  </button>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+          <section style={listCardStyle}>
+            <div style={sectionHeaderStyle}>
+              <div>
+                <h2 style={sectionTitleStyle}>Lista de clientes</h2>
+                <p style={sectionSubtitleStyle}>
+                  {loading
+                    ? "Carregando clientes..."
+                    : `${clientesFiltrados.length} cliente(s) encontrado(s)`}
+                </p>
               </div>
             </div>
 
-            <div style={rightColumnStyle}>
-              <div style={infoCardStyle}>
-                <div style={sectionHeaderStyle}>
-                  <div>
-                    <h2 style={sectionTitleStyle}>Acompanhamento MEI</h2>
-                    <p style={sectionSubtitleStyle}>
-                      Controle do faturamento anual com base apenas nas notas com sucesso.
-                    </p>
-                  </div>
-                </div>
+            {loading ? (
+              <div style={loadingStyle}>Carregando...</div>
+            ) : clientesFiltrados.length === 0 ? (
+              <div style={emptyStyle}>Nenhum cliente encontrado.</div>
+            ) : (
+              <div style={gridStyle}>
+                {clientesFiltrados.map((cliente) => {
+                  const ativo = cliente.is_active !== false;
+                  const tipo = cliente.is_mei === true ? "MEI" : "Não MEI";
 
-                <div style={meiBoxStyle}>
-                  <div style={meiTopStyle}>
-                    <span style={meiLabelStyle}>Limite anual MEI</span>
-                    <strong style={meiValueStyle}>{formatarValor(LIMITE_MEI)}</strong>
-                  </div>
+                  return (
+                    <article key={cliente.id} style={clientCardStyle}>
+                      <div style={cardHeaderStyle}>
+                        <div style={{ flex: 1 }}>
+                          <span style={clientIdStyle}>CLIENTE #{cliente.id}</span>
+                          <h3 style={clientNameStyle}>{cliente.name}</h3>
+                        </div>
 
-                  <div style={progressTrackStyle}>
-                    <div
-                      style={{
-                        ...progressFillStyle,
-                        width: `${resumo.percentualMei}%`,
-                        background: resumo.excedeuMei
-                          ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                          : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                      }}
-                    />
-                  </div>
+                        <span
+                          style={{
+                            ...statusBadgeStyle,
+                            ...(ativo ? statusActiveStyle : statusInactiveStyle),
+                          }}
+                        >
+                          {ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </div>
 
-                  <div style={meiStatsGridStyle}>
-                    <div style={meiStatBoxStyle}>
-                      <span style={infoLabelStyle}>Utilizado</span>
-                      <strong style={infoValueStyle}>
-                        {formatarValor(resumo.faturamentoAno)}
-                      </strong>
-                    </div>
+                      <div style={infoGridStyle}>
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>CNPJ</span>
+                          <strong style={infoValueStyle}>
+                            {mascararCnpj(cliente.cnpj)}
+                          </strong>
+                        </div>
 
-                    <div style={meiStatBoxStyle}>
-                      <span style={infoLabelStyle}>Restante</span>
-                      <strong style={infoValueStyle}>
-                        {formatarValor(resumo.restanteMei)}
-                      </strong>
-                    </div>
-                  </div>
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>Email</span>
+                          <strong style={infoValueStyle}>
+                            {mascararEmail(cliente.email)}
+                          </strong>
+                        </div>
 
-                  <div
-                    style={{
-                      ...alertBoxStyle,
-                      ...(resumo.excedeuMei ? alertDangerStyle : alertInfoStyle),
-                    }}
-                  >
-                    {resumo.excedeuMei
-                      ? "Atenção: o cliente ultrapassou o limite anual do MEI."
-                      : `O cliente utilizou ${resumo.percentualMei.toFixed(1)}% do limite anual do MEI.`}
-                  </div>
-                </div>
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>Telefone</span>
+                          <strong style={infoValueStyle}>
+                            {formatarTelefone(cliente.phone)}
+                          </strong>
+                        </div>
+
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>Tipo</span>
+                          <strong style={infoValueStyle}>{tipo}</strong>
+                        </div>
+
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>Endereço</span>
+                          <strong style={infoValueStyle}>
+                            {cliente.address || "Não informado"}
+                          </strong>
+                        </div>
+
+                        <div style={infoBoxStyle}>
+                          <span style={infoLabelStyle}>Cadastro</span>
+                          <strong style={infoValueStyle}>
+                            {formatarData(cliente.created_at)}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div style={actionsStyle}>
+                        <button
+                          type="button"
+                          style={accessButtonStyle}
+                          onClick={() => abrirCliente(cliente.id)}
+                        >
+                          Ver cliente
+                        </button>
+
+                        <Link
+                          href={`/emitir?client_id=${cliente.id}`}
+                          style={quickActionStyle}
+                        >
+                          Emitir nota
+                        </Link>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-
-              <div style={infoCardStyle}>
-                <div style={sectionHeaderStyle}>
-                  <div>
-                    <h2 style={sectionTitleStyle}>Última emissão</h2>
-                    <p style={sectionSubtitleStyle}>
-                      Resumo rápido da nota mais recente do cliente.
-                    </p>
-                  </div>
-                </div>
-
-                {ultimaNota ? (
-                  <div style={latestNoteBoxStyle}>
-                    <div style={latestNoteItemStyle}>
-                      <span style={infoLabelStyle}>Competência</span>
-                      <strong style={infoValueStyle}>
-                        {formatarData(ultimaNota.competency_date || ultimaNota.created_at)}
-                      </strong>
-                    </div>
-
-                    <div style={latestNoteItemStyle}>
-                      <span style={infoLabelStyle}>Valor</span>
-                      <strong style={infoValueStyle}>
-                        {formatarValor(ultimaNota.service_value)}
-                      </strong>
-                    </div>
-
-                    <div style={latestNoteItemStyle}>
-                      <span style={infoLabelStyle}>Cidade</span>
-                      <strong style={infoValueStyle}>
-                        {ultimaNota.service_city || "-"}
-                      </strong>
-                    </div>
-
-                    <div style={latestNoteItemStyle}>
-                      <span style={infoLabelStyle}>Status</span>
-                      <strong style={infoValueStyle}>
-                        {getStatusMeta(ultimaNota.status).label}
-                      </strong>
-                    </div>
-
-                    <div style={latestNoteItemStyle}>
-                      <span style={infoLabelStyle}>Chave NFS-e</span>
-                      <strong style={infoValueStyle}>
-                        {ultimaNota.nfse_key || "Não disponível"}
-                      </strong>
-                    </div>
-
-                    <div style={quickFileActionsStyle}>
-                      <button
-                        type="button"
-                        onClick={() => abrirArquivo(getArquivoUrl(ultimaNota, "pdf"), "PDF")}
-                        style={secondaryActionButtonStyle}
-                      >
-                        Abrir PDF
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => abrirArquivo(getArquivoUrl(ultimaNota, "xml"), "XML")}
-                        style={secondaryActionButtonStyle}
-                      >
-                        Abrir XML
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={emptyStyle}>Este cliente ainda não possui emissões.</div>
-                )}
-              </div>
-            </div>
+            )}
           </section>
         </div>
       </div>
@@ -861,23 +574,15 @@ const heroInfoValueStyle: CSSProperties = {
   fontWeight: 800,
 };
 
-const messageStyle: CSSProperties = {
-  borderRadius: "18px",
-  padding: "14px 16px",
-  marginBottom: "16px",
-  fontSize: "14px",
-  border: "1px solid transparent",
-};
-
-const errorMessageStyle: CSSProperties = {
-  backgroundColor: "rgba(239, 68, 68, 0.12)",
-  border: "1px solid rgba(239, 68, 68, 0.25)",
-  color: "#fecaca",
+const heroInfoSubStyle: CSSProperties = {
+  color: "#cbd5e1",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
 
 const summaryGridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: "14px",
   marginBottom: "18px",
 };
@@ -904,29 +609,120 @@ const summaryValueStyle: CSSProperties = {
   color: "#ffffff",
 };
 
-const panelGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, 0.85fr)",
-  gap: "18px",
+const messageStyle: CSSProperties = {
+  borderRadius: "18px",
+  padding: "14px 16px",
+  marginBottom: "16px",
+  fontSize: "14px",
+  border: "1px solid transparent",
+};
+
+const errorMessageStyle: CSSProperties = {
+  backgroundColor: "rgba(239, 68, 68, 0.12)",
+  border: "1px solid rgba(239, 68, 68, 0.25)",
+  color: "#fecaca",
+};
+
+const toolbarCardStyle: CSSProperties = {
+  display: "flex",
+  gap: "12px",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
   marginBottom: "18px",
-  alignItems: "start",
+  background: "rgba(2, 6, 23, 0.68)",
+  border: "1px solid rgba(59, 130, 246, 0.14)",
+  borderRadius: "24px",
+  padding: "16px",
+  boxShadow: "0 18px 45px rgba(0,0,0,0.28)",
+  backdropFilter: "blur(14px)",
 };
 
-const leftColumnStyle: CSSProperties = {
-  display: "grid",
-  gap: "18px",
+const searchWrapperStyle: CSSProperties = {
+  flex: 1,
+  minWidth: "280px",
 };
 
-const rightColumnStyle: CSSProperties = {
-  display: "grid",
-  gap: "18px",
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  background: "rgba(15, 23, 42, 0.92)",
+  border: "1px solid rgba(59, 130, 246, 0.18)",
+  borderRadius: "16px",
+  color: "#ffffff",
+  padding: "15px 16px",
+  outline: "none",
+  fontSize: "14px",
+  boxSizing: "border-box",
+  boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
 };
 
-const infoCardStyle: CSSProperties = {
+const toolbarButtonsStyle: CSSProperties = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
+const exportButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "13px 17px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
+  color: "#ffffff",
+  border: "none",
+  fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 12px 28px rgba(14,165,233,0.24)",
+};
+
+const newButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "13px 17px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+  color: "#ffffff",
+  border: "none",
+  fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 12px 28px rgba(16,185,129,0.26)",
+};
+
+const secondaryToolbarButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "13px 17px",
+  borderRadius: "16px",
+  background:
+    "linear-gradient(135deg, rgba(37,99,235,0.20) 0%, rgba(59,130,246,0.16) 100%)",
+  border: "1px solid rgba(59, 130, 246, 0.28)",
+  color: "#ffffff",
+  fontWeight: 700,
+  textDecoration: "none",
+};
+
+const backButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "13px 17px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+  color: "#ffffff",
+  border: "none",
+  fontWeight: 800,
+  textDecoration: "none",
+  boxShadow: "0 12px 28px rgba(37,99,235,0.26)",
+};
+
+const listCardStyle: CSSProperties = {
   background: "rgba(2, 6, 23, 0.68)",
   border: "1px solid rgba(59, 130, 246, 0.14)",
   borderRadius: "28px",
-  padding: "20px",
+  padding: "18px",
   boxShadow: "0 24px 70px rgba(0,0,0,0.34)",
   backdropFilter: "blur(16px)",
 };
@@ -955,6 +751,81 @@ const sectionSubtitleStyle: CSSProperties = {
   color: "#94a3b8",
 };
 
+const loadingStyle: CSSProperties = {
+  color: "#cbd5e1",
+  padding: "24px 10px",
+  fontSize: "15px",
+};
+
+const emptyStyle: CSSProperties = {
+  color: "#94a3b8",
+  padding: "24px 10px",
+  fontSize: "15px",
+};
+
+const gridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+  gap: "16px",
+};
+
+const clientCardStyle: CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(2, 6, 23, 0.92) 0%, rgba(15, 23, 42, 0.92) 100%)",
+  border: "1px solid rgba(59, 130, 246, 0.16)",
+  borderRadius: "24px",
+  padding: "18px",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+};
+
+const cardHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "16px",
+};
+
+const clientIdStyle: CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  color: "#93c5fd",
+  letterSpacing: "0.08em",
+  marginBottom: "6px",
+  fontWeight: 700,
+};
+
+const clientNameStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "19px",
+  fontWeight: 800,
+  color: "#ffffff",
+  lineHeight: 1.3,
+};
+
+const statusBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: "74px",
+  padding: "7px 12px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const statusActiveStyle: CSSProperties = {
+  color: "#bbf7d0",
+  backgroundColor: "rgba(16, 185, 129, 0.16)",
+  border: "1px solid rgba(16, 185, 129, 0.28)",
+};
+
+const statusInactiveStyle: CSSProperties = {
+  color: "#fecaca",
+  backgroundColor: "rgba(239, 68, 68, 0.12)",
+  border: "1px solid rgba(239, 68, 68, 0.24)",
+};
+
 const infoGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -981,7 +852,7 @@ const infoValueStyle: CSSProperties = {
   color: "#ffffff",
   fontWeight: 700,
   wordBreak: "break-word",
-  lineHeight: 1.55,
+  lineHeight: 1.5,
 };
 
 const actionsStyle: CSSProperties = {
@@ -991,134 +862,12 @@ const actionsStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
-const primaryActionStyle: CSSProperties = {
+const accessButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   textDecoration: "none",
-  padding: "13px 16px",
-  borderRadius: "14px",
-  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-  color: "#ffffff",
-  fontWeight: 800,
-  boxShadow: "0 12px 28px rgba(16,185,129,0.26)",
-};
-
-const secondaryActionStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  padding: "13px 16px",
-  borderRadius: "14px",
-  background:
-    "linear-gradient(135deg, rgba(37,99,235,0.20) 0%, rgba(59,130,246,0.16) 100%)",
-  border: "1px solid rgba(59, 130, 246, 0.28)",
-  color: "#ffffff",
-  fontWeight: 700,
-};
-
-const meiBoxStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "14px",
-};
-
-const meiTopStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
-};
-
-const meiLabelStyle: CSSProperties = {
-  color: "#93c5fd",
-  fontSize: "14px",
-  fontWeight: 700,
-};
-
-const meiValueStyle: CSSProperties = {
-  color: "#ffffff",
-  fontSize: "18px",
-  fontWeight: 800,
-};
-
-const progressTrackStyle: CSSProperties = {
-  width: "100%",
-  height: "14px",
-  borderRadius: "999px",
-  background: "rgba(148, 163, 184, 0.18)",
-  overflow: "hidden",
-};
-
-const progressFillStyle: CSSProperties = {
-  height: "100%",
-  borderRadius: "999px",
-  transition: "width 0.25s ease",
-};
-
-const meiStatsGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: "10px",
-};
-
-const meiStatBoxStyle: CSSProperties = {
-  backgroundColor: "rgba(15, 23, 42, 0.92)",
-  border: "1px solid rgba(59, 130, 246, 0.12)",
-  borderRadius: "16px",
-  padding: "12px 14px",
-};
-
-const alertBoxStyle: CSSProperties = {
-  borderRadius: "16px",
-  padding: "14px 16px",
-  fontSize: "14px",
-  lineHeight: 1.6,
-};
-
-const alertInfoStyle: CSSProperties = {
-  backgroundColor: "rgba(37, 99, 235, 0.12)",
-  border: "1px solid rgba(59, 130, 246, 0.22)",
-  color: "#bfdbfe",
-};
-
-const alertDangerStyle: CSSProperties = {
-  backgroundColor: "rgba(239, 68, 68, 0.12)",
-  border: "1px solid rgba(239, 68, 68, 0.25)",
-  color: "#fecaca",
-};
-
-const listCardStyle: CSSProperties = {
-  background: "rgba(2, 6, 23, 0.68)",
-  border: "1px solid rgba(59, 130, 246, 0.14)",
-  borderRadius: "28px",
-  padding: "18px",
-  boxShadow: "0 24px 70px rgba(0,0,0,0.34)",
-  backdropFilter: "blur(16px)",
-};
-
-const latestNoteBoxStyle: CSSProperties = {
-  display: "grid",
-  gap: "12px",
-};
-
-const latestNoteItemStyle: CSSProperties = {
-  backgroundColor: "rgba(15, 23, 42, 0.92)",
-  border: "1px solid rgba(59, 130, 246, 0.12)",
-  borderRadius: "16px",
-  padding: "12px 14px",
-};
-
-const quickFileActionsStyle: CSSProperties = {
-  display: "flex",
-  gap: "10px",
-  flexWrap: "wrap",
-  marginTop: "4px",
-};
-
-const secondaryActionButtonStyle: CSSProperties = {
-  padding: "12px 14px",
+  padding: "12px 16px",
   borderRadius: "14px",
   background:
     "linear-gradient(135deg, rgba(37,99,235,0.20) 0%, rgba(59,130,246,0.16) 100%)",
@@ -1128,57 +877,15 @@ const secondaryActionButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-const emptyStyle: CSSProperties = {
-  color: "#94a3b8",
-  padding: "24px 10px",
-  fontSize: "15px",
-};
-
-const tableWrapperStyle: CSSProperties = {
-  overflowX: "auto",
-};
-
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: "980px",
-};
-
-const thStyle: CSSProperties = {
-  textAlign: "left",
-  padding: "12px 10px",
-  borderBottom: "1px solid rgba(148, 163, 184, 0.20)",
-  fontSize: "12px",
-  color: "#93c5fd",
-  whiteSpace: "nowrap",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "12px 10px",
-  borderBottom: "1px solid rgba(148, 163, 184, 0.10)",
-  fontSize: "13px",
-  color: "#ffffff",
-  verticalAlign: "middle",
-};
-
-const statusBadgeStyle: CSSProperties = {
+const quickActionStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "7px 10px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: 800,
-  width: "fit-content",
-  lineHeight: 1.4,
-  border: "1px solid transparent",
-};
-
-const linkButtonStyle: CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "#93c5fd",
+  textDecoration: "none",
+  padding: "12px 16px",
+  borderRadius: "14px",
+  background: "rgba(16, 185, 129, 0.15)",
+  border: "1px solid rgba(16, 185, 129, 0.28)",
+  color: "#d1fae5",
   fontWeight: 700,
-  cursor: "pointer",
-  padding: 0,
 };

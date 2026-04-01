@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import ProtectedPageLoader from "@/components/ProtectedPageLoader";
@@ -27,6 +28,7 @@ type Cliente = {
   phone: string | null;
   address: string | null;
   client_type?: string | null;
+  is_mei?: boolean | null;
   is_active?: boolean | null;
   partner_company_id?: number | null;
   created_at?: string | null;
@@ -52,8 +54,7 @@ function mascararCnpj(valor?: string | null) {
   const numeros = limparDocumento(valor);
   if (numeros.length !== 14) return "Não informado";
 
-  return `${numeros.slice(0, 2)}.${numeros.slice(2, 5)}.*** /****-${numeros.slice(12)}`
-    .replace(" ", "");
+  return `${numeros.slice(0, 2)}.${numeros.slice(2, 5)}.***/****-${numeros.slice(12)}`;
 }
 
 function mascararEmail(valor?: string | null) {
@@ -182,9 +183,7 @@ export default function ClientesPage() {
     const total = clientes.length;
     const ativos = clientes.filter((cliente) => cliente.is_active !== false).length;
     const inativos = clientes.filter((cliente) => cliente.is_active === false).length;
-    const meis = clientes.filter((cliente) =>
-      String(cliente.client_type || "").toLowerCase().includes("mei")
-    ).length;
+    const meis = clientes.filter((cliente) => cliente.is_mei === true).length;
 
     return {
       total,
@@ -193,6 +192,49 @@ export default function ClientesPage() {
       meis,
     };
   }, [clientes]);
+
+  function baixarXlsx() {
+    try {
+      const base = clientesFiltrados.length > 0 ? clientesFiltrados : clientes;
+
+      if (!base.length) {
+        alert("Não há clientes para exportar.");
+        return;
+      }
+
+      const dados = base.map((cliente) => ({
+        "ID do cliente": cliente.id,
+        "Nome": cliente.name || "",
+        "CNPJ": cliente.cnpj ? formatarCnpj(cliente.cnpj) : "",
+        "Email": cliente.email || "",
+        "Telefone": cliente.phone ? formatarTelefone(cliente.phone) : "",
+        "Endereço": cliente.address || "",
+        "Status": cliente.is_active === false ? "Inativo" : "Ativo",
+        "É MEI": cliente.is_mei === true ? "Sim" : "Não",
+        "Data de cadastro": formatarData(cliente.created_at),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dados);
+      const workbook = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
+
+      const nomeEmpresa = String(empresa?.name || "empresa")
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, "")
+        .replace(/\s+/g, "_");
+
+      const agora = new Date();
+      const dia = String(agora.getDate()).padStart(2, "0");
+      const mes = String(agora.getMonth() + 1).padStart(2, "0");
+      const ano = agora.getFullYear();
+
+      XLSX.writeFile(workbook, `clientes_${nomeEmpresa}_${dia}-${mes}-${ano}.xlsx`);
+    } catch (error) {
+      console.log("Erro ao exportar XLSX:", error);
+      alert("Não foi possível gerar o arquivo XLSX.");
+    }
+  }
 
   if (loadingAccess) {
     return <ProtectedPageLoader label="Validando acesso da empresa..." />;
@@ -280,7 +322,11 @@ export default function ClientesPage() {
             </div>
 
             <div style={toolbarButtonsStyle}>
-              <button onClick={novoCliente} style={newButtonStyle}>
+              <button type="button" onClick={baixarXlsx} style={exportButtonStyle}>
+                Baixar XLSX
+              </button>
+
+              <button type="button" onClick={novoCliente} style={newButtonStyle}>
                 Novo cliente
               </button>
 
@@ -314,8 +360,7 @@ export default function ClientesPage() {
               <div style={gridStyle}>
                 {clientesFiltrados.map((cliente) => {
                   const ativo = cliente.is_active !== false;
-                  const tipo =
-                    String(cliente.client_type || "").trim() || "Não informado";
+                  const tipo = cliente.is_mei === true ? "MEI" : "Não MEI";
 
                   return (
                     <article key={cliente.id} style={clientCardStyle}>
@@ -617,6 +662,20 @@ const toolbarButtonsStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
+const exportButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "13px 17px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
+  color: "#ffffff",
+  border: "none",
+  fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 12px 28px rgba(14,165,233,0.24)",
+};
+
 const newButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -756,9 +815,9 @@ const statusBadgeStyle: CSSProperties = {
 };
 
 const statusActiveStyle: CSSProperties = {
-  color: "#bfdbfe",
-  backgroundColor: "rgba(37, 99, 235, 0.16)",
-  border: "1px solid rgba(59, 130, 246, 0.28)",
+  color: "#bbf7d0",
+  backgroundColor: "rgba(16, 185, 129, 0.16)",
+  border: "1px solid rgba(16, 185, 129, 0.28)",
 };
 
 const statusInactiveStyle: CSSProperties = {

@@ -72,9 +72,7 @@ export default function AdminPage() {
           .select("*")
           .order("id", { ascending: false }),
 
-        supabase
-          .from("clients")
-          .select("id, partner_company_id"),
+        supabase.from("clients").select("id, partner_company_id"),
       ]);
 
       if (empresasError) {
@@ -313,7 +311,10 @@ export default function AdminPage() {
           <div style={summaryCardStyle}>
             <span style={summaryLabelStyle}>Empresas pagas</span>
             <strong style={summaryValueStyle}>
-              {empresas.filter((empresa) => empresa.payment_status === "paid").length}
+              {
+                empresas.filter((empresa) => empresa.payment_status === "paid")
+                  .length
+              }
             </strong>
           </div>
 
@@ -509,23 +510,34 @@ export default function AdminPage() {
                       </button>
 
                       <button
-                        disabled={estaCarregandoAcao || empresa.payment_status !== "paid"}
+                        disabled={
+                          estaCarregandoAcao ||
+                          (empresa.payment_status === "unpaid" &&
+                            empresa.is_blocked === true)
+                        }
                         style={{
                           ...actionButtonUnpaidStyle,
                           opacity:
-                            estaCarregandoAcao || empresa.payment_status !== "paid"
+                            estaCarregandoAcao ||
+                            (empresa.payment_status === "unpaid" &&
+                              empresa.is_blocked === true)
                               ? 0.65
                               : 1,
                           cursor:
-                            estaCarregandoAcao || empresa.payment_status !== "paid"
+                            estaCarregandoAcao ||
+                            (empresa.payment_status === "unpaid" &&
+                              empresa.is_blocked === true)
                               ? "not-allowed"
                               : "pointer",
                         }}
                         onClick={() =>
                           atualizarEmpresa(
                             empresa.id,
-                            { payment_status: "unpaid" },
-                            "Empresa marcada como não paga."
+                            {
+                              payment_status: "unpaid",
+                              is_blocked: true,
+                            },
+                            "Empresa marcada como não paga e bloqueada."
                           )
                         }
                       >

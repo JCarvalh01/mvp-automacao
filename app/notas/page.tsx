@@ -241,6 +241,7 @@ export default function NotasPage() {
   const [selecionadas, setSelecionadas] = useState<number[]>([]);
   const [baixandoZip, setBaixandoZip] = useState(false);
   const [paginaAtual, setPaginaAtual] = useState(1);
+  const [paginaDigitada, setPaginaDigitada] = useState("1");
 
   const topScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
@@ -255,6 +256,7 @@ export default function NotasPage() {
 
   useEffect(() => {
     setPaginaAtual(1);
+    setPaginaDigitada("1");
     setSelecionadas([]);
   }, [
     busca,
@@ -267,6 +269,10 @@ export default function NotasPage() {
     dataInicial,
     dataFinal,
   ]);
+
+  useEffect(() => {
+    setPaginaDigitada(String(paginaAtual));
+  }, [paginaAtual]);
 
   useEffect(() => {
     function sincronizarLargura() {
@@ -430,6 +436,20 @@ export default function NotasPage() {
     setDataFinal("");
     setSelecionadas([]);
     setPaginaAtual(1);
+    setPaginaDigitada("1");
+  }
+
+  function irParaPaginaDesejada() {
+    const numero = Number(paginaDigitada);
+
+    if (!Number.isInteger(numero) || Number.isNaN(numero)) {
+      setPaginaDigitada(String(paginaAtual));
+      return;
+    }
+
+    const paginaValida = Math.min(Math.max(numero, 1), totalPaginas);
+    setPaginaAtual(paginaValida);
+    setPaginaDigitada(String(paginaValida));
   }
 
   async function baixarZipSelecionadas(tipo: "pdf" | "xml" | "ambos") {
@@ -1078,6 +1098,30 @@ export default function NotasPage() {
                     Página {paginaAtual} / {totalPaginas}
                   </div>
 
+                  <div style={paginationGoToWrapperStyle}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPaginas}
+                      value={paginaDigitada}
+                      onChange={(e) => setPaginaDigitada(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          irParaPaginaDesejada();
+                        }
+                      }}
+                      style={paginationInputStyle}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={irParaPaginaDesejada}
+                      style={paginationGoButtonStyle}
+                    >
+                      Ir
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() =>
@@ -1495,6 +1539,37 @@ const paginationCurrentStyle: React.CSSProperties = {
   fontSize: "14px",
   fontWeight: 700,
   padding: "0 4px",
+};
+
+const paginationGoToWrapperStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "nowrap",
+};
+
+const paginationInputStyle: React.CSSProperties = {
+  width: "84px",
+  border: "1px solid rgba(59,130,246,0.18)",
+  borderRadius: "12px",
+  padding: "10px 12px",
+  fontSize: "14px",
+  outline: "none",
+  backgroundColor: "rgba(15,23,42,0.92)",
+  color: "#ffffff",
+  boxSizing: "border-box",
+  textAlign: "center",
+};
+
+const paginationGoButtonStyle: React.CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.04)",
+  color: "#e2e8f0",
+  border: "1px solid rgba(148,163,184,0.20)",
+  borderRadius: "12px",
+  padding: "10px 14px",
+  fontSize: "14px",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
 const loadingBoxStyle: React.CSSProperties = {

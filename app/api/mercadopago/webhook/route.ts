@@ -11,21 +11,22 @@ const supabaseAdmin = createClient(
 
 function parseExternalReference(externalReference: string | null | undefined) {
   const value = String(externalReference || "");
-  const match = value.match(/^client_(\d+)_(essencial|black)$/);
+  const match = value.match(/^empresa_(\d+)_(essencial|full)$/);
 
   if (!match) {
     return null;
   }
 
   return {
-    clientId: Number(match[1]),
-    plano: match[2] as "essencial" | "black",
+    empresaId: Number(match[1]),
+    plano: match[2] as "essencial" | "full",
   };
 }
 
-function getPlanoUpdate(plano: "essencial" | "black") {
+function getPlanoUpdate(plano: "essencial" | "full") {
   if (plano === "essencial") {
     return {
+      payment_status: "paid",
       plan_type: "essencial",
       notes_limit: 10,
       is_blocked: false,
@@ -33,25 +34,31 @@ function getPlanoUpdate(plano: "essencial" | "black") {
   }
 
   return {
-    plan_type: "black",
+    payment_status: "paid",
+    plan_type: "full",
     notes_limit: 999999,
     is_blocked: false,
   };
 }
 
 async function processarPagamento(paymentId: string, accessToken: string) {
-  const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    cache: "no-store",
-  });
+  const response = await fetch(
+    `https://api.mercadopago.com/v1/payments/${paymentId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    }
+  );
 
   const payment = await response.json();
 
   if (!response.ok) {
-    throw new Error(payment?.message || "Erro ao consultar pagamento no Mercado Pago.");
+    throw new Error(
+      payment?.message || "Erro ao consultar pagamento no Mercado Pago."
+    );
   }
 
   return payment;
@@ -67,7 +74,8 @@ export async function POST(request: NextRequest) {
 
     const url = new URL(request.url);
     const topic = url.searchParams.get("topic") || url.searchParams.get("type");
-    const idFromQuery = url.searchParams.get("id") || url.searchParams.get("data.id");
+    const idFromQuery =
+      url.searchParams.get("id") || url.searchParams.get("data.id");
 
     let body: any = null;
 
@@ -78,10 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     const resourceType = body?.type || topic;
-    const paymentId =
-      body?.data?.id ||
-      body?.id ||
-      idFromQuery;
+    const paymentId = body?.data?.id || body?.id || idFromQuery;
 
     if (resourceType !== "payment" || !paymentId) {
       return NextResponse.json({ received: true });
@@ -102,18 +107,18 @@ export async function POST(request: NextRequest) {
     const planoUpdate = getPlanoUpdate(parsed.plano);
 
     const { error } = await supabaseAdmin
-      .from("clients")
+      .from("partner_companies")
       .update(planoUpdate)
-      .eq("id", parsed.clientId);
+      .eq("id", parsed.empresaId);
 
     if (error) {
-      console.log("Erro ao liberar plano do cliente:", error);
+      console.log("Erro ao liberar plano da empresa:", error);
       return NextResponse.json({ success: false }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      clientId: parsed.clientId,
+      empresaId: parsed.empresaId,
       plano: parsed.plano,
     });
   } catch (error) {

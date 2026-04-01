@@ -89,6 +89,82 @@ export default function LoginPage() {
     }
   }, [router]);
 
+  async function criarEmpresaAutomaticaParaUsuario(usuario: Usuario) {
+    const nomeBase = usuario.name?.trim() || "Empresa";
+    const emailBase = usuario.email?.trim().toLowerCase() || "";
+    const telefoneBase = "";
+    const enderecoBase = "";
+    const cnpjBase = "";
+
+    const { data: empresaCriada, error: createError } = await supabase
+      .from("partner_companies")
+      .insert({
+        name: nomeBase,
+        cnpj: cnpjBase,
+        email: emailBase,
+        phone: telefoneBase,
+        address: enderecoBase,
+        user_id: usuario.id,
+      })
+      .select("*")
+      .single();
+
+    if (createError || !empresaCriada) {
+      console.log("Erro ao criar empresa automática:", createError);
+      return null;
+    }
+
+    return empresaCriada as Empresa;
+  }
+
+  async function buscarOuCriarEmpresaDoUsuario(usuario: Usuario) {
+    const { data: empresas, error: empresaError } = await supabase
+      .from("partner_companies")
+      .select("*")
+      .eq("user_id", usuario.id);
+
+    console.log("Resultado partner_companies:", {
+      usuarioId: usuario.id,
+      empresas,
+      empresaError,
+    });
+
+    if (empresaError) {
+      return {
+        empresa: null,
+        erro: `Erro ao buscar empresa: ${empresaError.message}`,
+      };
+    }
+
+    if (empresas && empresas.length === 1) {
+      return {
+        empresa: empresas[0] as Empresa,
+        erro: "",
+      };
+    }
+
+    if (empresas && empresas.length > 1) {
+      return {
+        empresa: null,
+        erro: "Mais de uma empresa vinculada a este usuário.",
+      };
+    }
+
+    const empresaCriada = await criarEmpresaAutomaticaParaUsuario(usuario);
+
+    if (!empresaCriada) {
+      return {
+        empresa: null,
+        erro: "Empresa vinculada não encontrada e não foi possível criar automaticamente.",
+      };
+    }
+
+    return {
+      empresa: empresaCriada,
+      erro: "",
+    };
+  }
+
   async function fazerLogin(e: React.FormEvent) {
     e.preventDefault();
 
@@ -111,12 +187,16 @@ export default function LoginPage() {
 
       clearAllSessions();
 
-      const { data: usuario, error: usuarioError } = await supabase
+      const { data: usuarios, error: usuarioError } = await supabase
         .from("users")
         .select("*")
-        .eq("email", emailNormalizado)
-        .eq("password", senhaNormalizada)
-        .single<Usuario>();
+        .ilike("email", emailNormalizado)
+        .eq("password", senhaNormalizada);
+
+      const usuario =
+        !usuarioError && usuarios && usuarios.length === 1
+          ? (usuarios[0] as Usuario)
+          : null;
 
       if (usuario && !usuarioError) {
         if (!usuario.is_active) {
@@ -149,36 +229,15 @@ export default function LoginPage() {
         }
 
         if (tipoUsuarioNormalizado === "partner_company") {
-          const { data: empresas, error: empresaError } = await supabase
-            .from("partner_companies")
-            .select("*")
-            .eq("user_id", usuario.id);
+          const resultadoEmpresa = await buscarOuCriarEmpresaDoUsuario(usuario);
 
-          console.log("Resultado partner_companies:", {
-            usuarioId: usuario.id,
-            empresas,
-            empresaError,
-          });
-
-          if (empresaError) {
+          if (!resultadoEmpresa.empresa) {
             clearAllSessions();
-            setMensagem(`Erro ao buscar empresa: ${empresaError.message}`);
+            setMensagem(resultadoEmpresa.erro || "Empresa vinculada não encontrada.");
             return;
           }
 
-          if (!empresas || empresas.length === 0) {
-            clearAllSessions();
-            setMensagem("Empresa vinculada não encontrada.");
-            return;
-          }
-
-          if (empresas.length > 1) {
-            clearAllSessions();
-            setMensagem("Mais de uma empresa vinculada a este usuário.");
-            return;
-          }
-
-          const empresa = empresas[0] as Empresa;
+          const empresa = resultadoEmpresa.empresa;
 
           savePartnerCompanySession({
             id: empresa.id,
@@ -198,7 +257,7 @@ export default function LoginPage() {
           const { data: clientes, error: clienteError } = await supabase
             .from("clients")
             .select("*")
-            .eq("email", usuario.email);
+            .ilike("email", usuario.email);
 
           console.log("Resultado clients por email:", {
             email: usuario.email,
@@ -255,10 +314,19 @@ export default function LoginPage() {
         return;
       }
 
+      if (usuarioError) {
+        console.log("Erro ao buscar usuário:", usuarioError);
+      }
+
+      if (usuarios && usuarios.length > 1) {
+        setMensagem("Mais de um usuário encontrado com este login.");
+        return;
+      }
+
       const { data: clientesDiretos, error: clienteDiretoError } = await supabase
         .from("clients")
         .select("*")
-        .eq("email", emailNormalizado)
+        .ilike("email", emailNormalizado)
         .eq("password", senhaNormalizada);
 
       console.log("Fallback clients:", {

@@ -282,8 +282,28 @@ export default function EditarClientePage() {
                 </p>
 
                 <div style={heroPillsStyle}>
-                  <span style={heroPillStyle}>{resumoStatus.status}</span>
-                  <span style={heroPillStyle}>{resumoStatus.mei}</span>
+                  <span
+                    style={{
+                      ...heroPillStyle,
+                      ...(resumoStatus.status === "Inativo"
+                        ? heroPillDangerStyle
+                        : {}),
+                    }}
+                  >
+                    {resumoStatus.status}
+                  </span>
+
+                  <span
+                    style={{
+                      ...heroPillStyle,
+                      ...(resumoStatus.mei === "Não MEI"
+                        ? heroPillDangerStyle
+                        : {}),
+                    }}
+                  >
+                    {resumoStatus.mei}
+                  </span>
+
                   <span style={heroPillStyle}>Empresa vinculada</span>
                 </div>
               </div>
@@ -703,6 +723,12 @@ const heroPillStyle: CSSProperties = {
   color: "#bfdbfe",
   fontSize: "12px",
   fontWeight: 700,
+};
+
+const heroPillDangerStyle: CSSProperties = {
+  background: "rgba(239, 68, 68, 0.16)",
+  border: "1px solid rgba(239, 68, 68, 0.30)",
+  color: "#fecaca",
 };
 
 const heroSideBoxStyle: CSSProperties = {

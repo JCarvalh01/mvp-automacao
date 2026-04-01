@@ -56,6 +56,7 @@ export default function AdminEmpresaDetalhePage() {
   const [mensagem, setMensagem] = useState("");
   const [entrandoComoEmpresa, setEntrandoComoEmpresa] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [abrindoClienteId, setAbrindoClienteId] = useState<number | null>(null);
 
   useEffect(() => {
     if (authorized) {
@@ -266,8 +267,17 @@ export default function AdminEmpresaDetalhePage() {
     router.push("/admin");
   }
 
-  function abrirCliente(clienteId: number) {
-    router.push(`/clientes/${clienteId}`);
+  async function abrirCliente(clienteId: number) {
+    try {
+      setAbrindoClienteId(clienteId);
+      setMensagem("");
+      router.push(`/admin/cliente/${clienteId}`);
+    } catch (error) {
+      console.log("Erro ao abrir cliente:", error);
+      setMensagem("Erro ao abrir cliente.");
+    } finally {
+      setAbrindoClienteId(null);
+    }
   }
 
   function editarEmpresa() {
@@ -688,10 +698,15 @@ export default function AdminEmpresaDetalhePage() {
 
                   <div style={actionsStyle}>
                     <button
-                      style={accessButtonStyle}
+                      style={{
+                        ...accessButtonStyle,
+                        opacity: abrindoClienteId === cliente.id ? 0.75 : 1,
+                        cursor: abrindoClienteId === cliente.id ? "not-allowed" : "pointer",
+                      }}
                       onClick={() => abrirCliente(cliente.id)}
+                      disabled={abrindoClienteId === cliente.id}
                     >
-                      Ver cliente
+                      {abrindoClienteId === cliente.id ? "Abrindo..." : "Ver cliente"}
                     </button>
                   </div>
                 </article>

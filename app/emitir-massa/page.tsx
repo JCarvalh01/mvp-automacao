@@ -665,9 +665,9 @@ export default function EmitirMassaPage() {
       return;
     }
 
-    const linhasComErro = linhas.filter((linha) => linha.erros.length > 0);
+    const linhasComErroValidacao = linhas.filter((linha) => linha.erros.length > 0);
 
-    if (linhasComErro.length > 0) {
+    if (linhasComErroValidacao.length > 0) {
       setErro("Existem linhas com erro. Corrija a planilha antes de emitir.");
       return;
     }
@@ -814,7 +814,8 @@ export default function EmitirMassaPage() {
                 mensagemStatus: "Nota em emissão. Aguarde a conclusão.",
                 pdf_url: resultadoAutomacao.invoice?.pdf_url || resultadoAutomacao.pdfUrl || null,
                 xml_url: resultadoAutomacao.invoice?.xml_url || resultadoAutomacao.xmlUrl || null,
-                nfse_key: resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null,
+                nfse_key:
+                  resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null,
                 invoice_id: data.id,
               });
 
@@ -897,7 +898,7 @@ export default function EmitirMassaPage() {
 
       const totalSucesso = linhasFinais.filter((linha) => linha.status === "success").length;
       const totalEmProcessamento = linhasFinais.filter((linha) => linha.status === "processing").length;
-      const totalErros = linhasFinais.filter((linha) => linha.status === "error").length;
+      const totalErrosEmissao = linhasFinais.filter((linha) => linha.status === "error").length;
       const totalCanceladas = linhasFinais.filter((linha) => linha.status === "canceled").length;
 
       if (canceladoRef.current) {
@@ -908,7 +909,7 @@ export default function EmitirMassaPage() {
           `${totalSucesso} nota(s) concluída(s). ${totalEmProcessamento} ainda em processamento.`
         );
         setErro(
-          totalErros > 0 || totalCanceladas > 0
+          totalErrosEmissao > 0 || totalCanceladas > 0
             ? "Algumas linhas não foram concluídas. Verifique a coluna de status."
             : ""
         );
@@ -917,7 +918,7 @@ export default function EmitirMassaPage() {
           setMensagem(`${totalSucesso} nota(s) emitida(s) com sucesso.`);
         }
 
-        if (totalErros > 0 || totalCanceladas > 0) {
+        if (totalErrosEmissao > 0 || totalCanceladas > 0) {
           setErro("Algumas linhas não foram emitidas. Verifique a coluna de status.");
         }
       }
@@ -994,8 +995,21 @@ export default function EmitirMassaPage() {
     setLoading(false);
   }
 
-  const totalComErro = useMemo(
+  const totalErrosValidacao = useMemo(
     () => linhas.filter((linha) => linha.erros.length > 0).length,
+    [linhas]
+  );
+
+  const totalErrosEmissao = useMemo(
+    () => linhas.filter((linha) => linha.status === "error").length,
+    [linhas]
+  );
+
+  const totalComErro = useMemo(
+    () =>
+      linhas.filter(
+        (linha) => linha.erros.length > 0 || linha.status === "error"
+      ).length,
     [linhas]
   );
 
@@ -1160,6 +1174,17 @@ export default function EmitirMassaPage() {
             {mensagem && <div style={successMessageStyle}>{mensagem}</div>}
             {erro && <div style={errorMessageStyle}>{erro}</div>}
 
+            {linhas.length > 0 && (
+              <div style={inlineStatsInfoStyle}>
+                <span>
+                  <strong>Erros de validação:</strong> {totalErrosValidacao}
+                </span>
+                <span>
+                  <strong>Erros de emissão:</strong> {totalErrosEmissao}
+                </span>
+              </div>
+            )}
+
             <div style={modelInfoBoxStyle}>
               <h4 style={modelTitleStyle}>Colunas obrigatórias da planilha</h4>
               <p style={modelTextStyle}>
@@ -1175,8 +1200,12 @@ export default function EmitirMassaPage() {
                 <div style={actionBarStyle}>
                   <button
                     onClick={emitirNotas}
-                    disabled={loading || totalComErro > 0 || loadingInicial}
-                    style={loading || totalComErro > 0 || loadingInicial ? disabledButtonStyle : primaryWideButtonStyle}
+                    disabled={loading || totalErrosValidacao > 0 || loadingInicial}
+                    style={
+                      loading || totalErrosValidacao > 0 || loadingInicial
+                        ? disabledButtonStyle
+                        : primaryWideButtonStyle
+                    }
                   >
                     {loading ? "Emitindo..." : "Emitir notas em massa"}
                   </button>
@@ -1232,7 +1261,14 @@ export default function EmitirMassaPage() {
                               <td style={tdStyle}>{linha.tax_code || "-"}</td>
                               <td style={tdStyle}>{linha.service_city || "-"}</td>
                               <td style={tdStyle}>{formatarValor(Number(linha.service_value || 0))}</td>
-                              <td style={{ ...tdStyle, minWidth: 260, whiteSpace: "normal", lineHeight: 1.55 }}>
+                              <td
+                                style={{
+                                  ...tdStyle,
+                                  minWidth: 260,
+                                  whiteSpace: "normal",
+                                  lineHeight: 1.55,
+                                }}
+                              >
                                 {linha.service_description || "-"}
                               </td>
                               <td style={tdStyle}>{linha.competency_date || "-"}</td>
@@ -1665,6 +1701,20 @@ const errorMessageStyle: CSSProperties = {
   padding: "12px 14px",
   fontSize: "14px",
   fontWeight: 700,
+};
+
+const inlineStatsInfoStyle: CSSProperties = {
+  display: "flex",
+  gap: "16px",
+  flexWrap: "wrap",
+  marginBottom: "16px",
+  backgroundColor: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  color: "#334155",
+  borderRadius: "16px",
+  padding: "12px 14px",
+  fontSize: "14px",
+  lineHeight: 1.5,
 };
 
 const modelInfoBoxStyle: CSSProperties = {

@@ -487,7 +487,7 @@ export default function HomePage() {
                 rel="noopener noreferrer"
                 style={planButtonStyle}
               >
-                Falar com o administrador
+                Falar com o consultor
               </a>
             </article>
           </div>

@@ -239,6 +239,10 @@ export default function AreaClientePage() {
     return "Última emissão registrada";
   }, [resumo.ultimaNota]);
 
+  const whatsappLink = `https://wa.me/5511982966310?text=${encodeURIComponent(
+    "Olá! Preciso de ajuda na plataforma MVP Automação Fiscal. Poderia me auxiliar?"
+  )}`;
+
   if (loading) {
     return <ProtectedPageLoader label="Carregando área do cliente..." />;
   }
@@ -607,6 +611,17 @@ export default function AreaClientePage() {
           )}
         </section>
       </div>
+
+      <a
+        href={whatsappLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={whatsappButtonStyle}
+        aria-label="Falar com o suporte"
+        title="Precisa de ajuda? Fale com o suporte"
+      >
+        💬
+      </a>
     </main>
   );
 }
@@ -1261,4 +1276,22 @@ const moreNotesButtonStyle: React.CSSProperties = {
   border: "1px solid rgba(59, 130, 246, 0.20)",
   color: "#dbeafe",
   fontWeight: 800,
+};
+
+const whatsappButtonStyle: React.CSSProperties = {
+  position: "fixed",
+  right: "20px",
+  bottom: "20px",
+  width: "58px",
+  height: "58px",
+  borderRadius: "999px",
+  background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#ffffff",
+  fontSize: "26px",
+  textDecoration: "none",
+  boxShadow: "0 14px 30px rgba(0,0,0,0.30)",
+  zIndex: 9999,
 };

@@ -178,6 +178,37 @@ function normalizarValor(valor: number | string | null | undefined) {
   return Number.isFinite(numero) ? numero : 0;
 }
 
+function parseCompetencyDate(value: string | null) {
+  if (!value) return null;
+
+  const data = new Date(value);
+
+  if (!isNaN(data.getTime())) {
+    return data;
+  }
+
+  const partes = value.split("-");
+  if (partes.length === 3) {
+    const [ano, mes, dia] = partes.map(Number);
+    const dataNormalizada = new Date(ano, mes - 1, dia);
+    if (!isNaN(dataNormalizada.getTime())) {
+      return dataNormalizada;
+    }
+  }
+
+  return null;
+}
+
+function getAnoMesCompetencia(value: string | null | undefined) {
+  const data = parseCompetencyDate(value || null);
+  if (!data) return { ano: "", mes: "" };
+
+  return {
+    ano: String(data.getFullYear()),
+    mes: String(data.getMonth() + 1).padStart(2, "0"),
+  };
+}
+
 export default function DashboardEmpresaPage() {
   const router = useRouter();
   const { loading: routeLoading, authorized } = useProtectedRoute(["partner_company"]);
@@ -201,6 +232,11 @@ export default function DashboardEmpresaPage() {
     rankingClientes: [],
     ultimasEmissoes: [],
   });
+
+  const [notasOriginais, setNotasOriginais] = useState<Nota[]>([]);
+  const [clientesOriginais, setClientesOriginais] = useState<Cliente[]>([]);
+  const [filtroAnoRanking, setFiltroAnoRanking] = useState("todos");
+  const [filtroMesRanking, setFiltroMesRanking] = useState("todos");
 
   useEffect(() => {
     if (!routeLoading && authorized) {
@@ -260,6 +296,9 @@ export default function DashboardEmpresaPage() {
 
       const clientes = (clientesData || []) as Cliente[];
       const notas = (notasData || []) as Nota[];
+
+      setClientesOriginais(clientes);
+      setNotasOriginais(notas);
 
       const dashboardCalculado = calcularDashboard(clientes, notas);
       setDashboard(dashboardCalculado);
@@ -387,26 +426,83 @@ export default function DashboardEmpresaPage() {
     };
   }
 
-  function parseCompetencyDate(value: string | null) {
-    if (!value) return null;
+  const anosRankingDisponiveis = useMemo(() => {
+    const anos = new Set<string>();
 
-    const data = new Date(value);
+    notasOriginais.forEach((nota) => {
+      const { ano } = getAnoMesCompetencia(nota.competency_date || nota.created_at || null);
+      if (ano) anos.add(ano);
+    });
 
-    if (!isNaN(data.getTime())) {
-      return data;
+    return Array.from(anos).sort((a, b) => Number(b) - Number(a));
+  }, [notasOriginais]);
+
+  const mesesRankingDisponiveis = useMemo(() => {
+    const meses = new Set<string>();
+
+    notasOriginais.forEach((nota) => {
+      const { ano, mes } = getAnoMesCompetencia(nota.competency_date || nota.created_at || null);
+
+      if (!ano || !mes) return;
+      if (filtroAnoRanking !== "todos" && ano !== filtroAnoRanking) return;
+
+      meses.add(mes);
+    });
+
+    return Array.from(meses).sort((a, b) => Number(a) - Number(b));
+  }, [notasOriginais, filtroAnoRanking]);
+
+  useEffect(() => {
+    if (
+      filtroMesRanking !== "todos" &&
+      !mesesRankingDisponiveis.includes(filtroMesRanking)
+    ) {
+      setFiltroMesRanking("todos");
     }
+  }, [filtroMesRanking, mesesRankingDisponiveis]);
 
-    const partes = value.split("-");
-    if (partes.length === 3) {
-      const [ano, mes, dia] = partes.map(Number);
-      const dataNormalizada = new Date(ano, mes - 1, dia);
-      if (!isNaN(dataNormalizada.getTime())) {
-        return dataNormalizada;
-      }
-    }
+  const rankingClientesFiltrado = useMemo(() => {
+    const mapaClientes = new Map<number, Cliente>();
+    clientesOriginais.forEach((cliente) => {
+      mapaClientes.set(cliente.id, cliente);
+    });
 
-    return null;
-  }
+    const rankingMap = new Map<number | null, RankingItem>();
+
+    notasOriginais.forEach((nota) => {
+      const status = String(nota.status || "").toLowerCase();
+      if (status !== "success") return;
+
+      const { ano, mes } = getAnoMesCompetencia(
+        nota.competency_date || nota.created_at || null
+      );
+
+      if (filtroAnoRanking !== "todos" && ano !== filtroAnoRanking) return;
+      if (filtroMesRanking !== "todos" && mes !== filtroMesRanking) return;
+
+      const valor = normalizarValor(nota.service_value);
+      const cliente = nota.client_id ? mapaClientes.get(nota.client_id) : null;
+      const nomeCliente =
+        cliente?.name?.trim() ||
+        (nota.client_id ? `Cliente #${nota.client_id}` : "Sem cliente vinculado");
+
+      const existente = rankingMap.get(nota.client_id) || {
+        clientId: nota.client_id,
+        clientName: nomeCliente,
+        total: 0,
+        quantidadeNotas: 0,
+      };
+
+      existente.total += valor;
+      existente.quantidadeNotas += 1;
+
+      rankingMap.set(nota.client_id, existente);
+    });
+
+    return Array.from(rankingMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }, [clientesOriginais, notasOriginais, filtroAnoRanking, filtroMesRanking]);
 
   const statusOperacional = useMemo(() => {
     if (dashboard.totalNotasError > 0) return "Atenção necessária";
@@ -580,20 +676,56 @@ export default function DashboardEmpresaPage() {
 
           <section style={contentGridStyle}>
             <div style={panelCardStyle}>
-              <div style={sectionHeaderStyle}>
-                <h3 style={sectionTitleStyle}>Ranking de faturamento por cliente</h3>
-                <p style={sectionTextStyle}>
-                  Top 5 clientes com maior faturamento, baseado apenas em notas com status success.
-                </p>
+              <div style={sectionHeaderWithFiltersStyle}>
+                <div>
+                  <h3 style={sectionTitleStyle}>Ranking de faturamento por cliente</h3>
+                  <p style={sectionTextStyle}>
+                    Top 5 clientes com maior faturamento, baseado apenas em notas com status success.
+                  </p>
+                </div>
+
+                <div style={rankingFiltersWrapStyle}>
+                  <div style={rankingFilterGroupStyle}>
+                    <label style={rankingFilterLabelStyle}>Ano</label>
+                    <select
+                      value={filtroAnoRanking}
+                      onChange={(e) => setFiltroAnoRanking(e.target.value)}
+                      style={rankingSelectStyle}
+                    >
+                      <option value="todos">Todos</option>
+                      {anosRankingDisponiveis.map((ano) => (
+                        <option key={ano} value={ano}>
+                          {ano}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={rankingFilterGroupStyle}>
+                    <label style={rankingFilterLabelStyle}>Mês</label>
+                    <select
+                      value={filtroMesRanking}
+                      onChange={(e) => setFiltroMesRanking(e.target.value)}
+                      style={rankingSelectStyle}
+                    >
+                      <option value="todos">Todos</option>
+                      {mesesRankingDisponiveis.map((mes) => (
+                        <option key={mes} value={mes}>
+                          {mes}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              {dashboard.rankingClientes.length === 0 ? (
+              {rankingClientesFiltrado.length === 0 ? (
                 <div style={emptyBoxStyle}>
-                  Nenhum faturamento encontrado para montar o ranking.
+                  Nenhum faturamento encontrado para montar o ranking nesse período.
                 </div>
               ) : (
                 <div style={rankingListStyle}>
-                  {dashboard.rankingClientes.map((item, index) => (
+                  {rankingClientesFiltrado.map((item, index) => (
                     <div key={`${item.clientId}-${index}`} style={rankingItemStyle}>
                       <div>
                         <span style={rankingPositionStyle}>#{index + 1}</span>
@@ -644,15 +776,6 @@ export default function DashboardEmpresaPage() {
                     {dashboard.totalNotasCanceled}
                   </strong>
                 </div>
-              </div>
-
-              <div style={futureCardStyle}>
-                <span style={futureTagStyle}>Foco atual</span>
-                <h4 style={futureTitleStyle}>Produto centrado em emissão fiscal</h4>
-                <p style={futureTextStyle}>
-                  O foco atual da MVP está em emissão individual, emissão em massa,
-                  histórico de notas e organização operacional da carteira de clientes.
-                </p>
               </div>
             </div>
           </section>
@@ -908,6 +1031,15 @@ const sectionHeaderStyle: React.CSSProperties = {
   marginBottom: "22px",
 };
 
+const sectionHeaderWithFiltersStyle: React.CSSProperties = {
+  marginBottom: "22px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+  flexWrap: "wrap",
+};
+
 const sectionTitleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: "24px",
@@ -921,6 +1053,37 @@ const sectionTextStyle: React.CSSProperties = {
   color: "#94a3b8",
   fontSize: "14px",
   lineHeight: 1.5,
+};
+
+const rankingFiltersWrapStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "12px",
+  flexWrap: "wrap",
+};
+
+const rankingFilterGroupStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  minWidth: "140px",
+};
+
+const rankingFilterLabelStyle: React.CSSProperties = {
+  fontSize: "13px",
+  color: "#93c5fd",
+  fontWeight: 700,
+};
+
+const rankingSelectStyle: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid rgba(59,130,246,0.18)",
+  borderRadius: "12px",
+  padding: "12px 14px",
+  fontSize: "14px",
+  outline: "none",
+  backgroundColor: "rgba(15,23,42,0.92)",
+  color: "#ffffff",
+  boxSizing: "border-box",
 };
 
 const rankingListStyle: React.CSSProperties = {
@@ -993,39 +1156,6 @@ const summaryValueStyle: React.CSSProperties = {
   fontSize: "24px",
   fontWeight: 800,
   color: "#ffffff",
-};
-
-const futureCardStyle: React.CSSProperties = {
-  marginTop: "18px",
-  borderRadius: "20px",
-  padding: "20px",
-  background: "linear-gradient(135deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.96) 100%)",
-  border: "1px solid rgba(59,130,246,0.14)",
-};
-
-const futureTagStyle: React.CSSProperties = {
-  display: "inline-block",
-  fontSize: "12px",
-  fontWeight: 700,
-  color: "#bfdbfe",
-  backgroundColor: "rgba(59,130,246,0.16)",
-  borderRadius: "999px",
-  padding: "6px 10px",
-  marginBottom: "10px",
-};
-
-const futureTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: "20px",
-  color: "#ffffff",
-};
-
-const futureTextStyle: React.CSSProperties = {
-  marginTop: "10px",
-  marginBottom: 0,
-  fontSize: "14px",
-  lineHeight: 1.6,
-  color: "#cbd5e1",
 };
 
 const emptyBoxStyle: React.CSSProperties = {

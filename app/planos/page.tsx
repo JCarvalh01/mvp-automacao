@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClientSession } from "@/lib/session";
+import { getPartnerCompanySession } from "@/lib/session";
 
 type CheckoutResponse = {
   success: boolean;
@@ -12,11 +12,13 @@ type CheckoutResponse = {
 
 export default function PlanosPage() {
   const whatsappLink =
-    "https://wa.me/5511982966310?text=Quero%20suporte%20no%20MVP%20Automa%C3%A7%C3%A3o%20Fiscal";
+    "https://wa.me/5511982966310?text=Olá!%20Quero%20falar%20sobre%20o%20plano%20Parceiro%20da%20MVP%20Automação%20Fiscal.";
 
-  const [loadingPlano, setLoadingPlano] = useState<"essencial" | "black" | "">("");
+  const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
   const [mensagem, setMensagem] = useState("");
-  const [tipoMensagem, setTipoMensagem] = useState<"sucesso" | "erro" | "aviso" | "">("");
+  const [tipoMensagem, setTipoMensagem] = useState<
+    "sucesso" | "erro" | "aviso" | ""
+  >("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -25,27 +27,33 @@ export default function PlanosPage() {
     const status = url.searchParams.get("status");
 
     if (status === "success") {
-      setMensagem("Pagamento aprovado! Seu plano está em processamento de liberação.");
+      setMensagem(
+        "Pagamento aprovado! Seu plano está em processamento de liberação."
+      );
       setTipoMensagem("sucesso");
     } else if (status === "pending") {
-      setMensagem("Pagamento pendente. Assim que for confirmado, seu plano será liberado.");
+      setMensagem(
+        "Pagamento pendente. Assim que for confirmado, seu plano será liberado."
+      );
       setTipoMensagem("aviso");
     } else if (status === "failure") {
-      setMensagem("Pagamento não concluído. Tente novamente ou fale com o suporte.");
+      setMensagem(
+        "Pagamento não concluído. Tente novamente ou fale com o suporte."
+      );
       setTipoMensagem("erro");
     }
   }, []);
 
-  async function assinarPlano(plano: "essencial" | "black") {
+  async function assinarPlano(plano: "essencial" | "full") {
     try {
       setLoadingPlano(plano);
       setMensagem("");
       setTipoMensagem("");
 
-      const clientSession = getClientSession();
+      const empresaSession = getPartnerCompanySession();
 
-      if (!clientSession?.id) {
-        setMensagem("Faça login como cliente antes de assinar um plano.");
+      if (!empresaSession?.id) {
+        setMensagem("Faça login como empresa antes de assinar um plano.");
         setTipoMensagem("erro");
         setLoadingPlano("");
         return;
@@ -57,7 +65,7 @@ export default function PlanosPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          clientId: clientSession.id,
+          empresaId: empresaSession.id,
           plano,
         }),
       });
@@ -84,18 +92,12 @@ export default function PlanosPage() {
     <main style={pageStyle}>
       <div style={containerStyle}>
         <section style={heroStyle}>
-          <h1 style={titleStyle}>
-            Emita NFS-e automaticamente sem perder tempo
-          </h1>
+          <h1 style={titleStyle}>Escolha o plano ideal para sua operação</h1>
 
           <p style={subtitleStyle}>
-            Pare de emitir nota manualmente. Automatize tudo em segundos,
-            evite erros e ganhe tempo para focar no que realmente importa.
+            Assine online, avance para o checkout e ative o sistema conforme a
+            necessidade da sua operação.
           </p>
-
-          <a href={whatsappLink} target="_blank" style={ctaButtonStyle}>
-            Falar no WhatsApp
-          </a>
         </section>
 
         {mensagem && (
@@ -114,14 +116,21 @@ export default function PlanosPage() {
 
         <section style={plansGridStyle}>
           <div style={cardStyle}>
+            <div style={pillRowStyle}>
+              <span style={topPillStyle}>MEI</span>
+            </div>
+
             <h2 style={planTitleStyle}>Essencial</h2>
-            <p style={priceStyle}>R$29,90</p>
+            <p style={priceStyle}>R$ 29,90</p>
+            <p style={planTextStyle}>
+              Entrada com excelente custo-benefício para quem quer começar com organização.
+            </p>
 
             <ul style={listStyle}>
-              <li>✔ Até 10 notas por mês</li>
-              <li>✔ Emissão automática</li>
-              <li>✔ Simples e rápido</li>
-              <li>✔ Ideal para MEI</li>
+              <li style={listItemStyle}>✔ Até 10 notas por mês</li>
+              <li style={listItemStyle}>✔ Emissão individual</li>
+              <li style={listItemStyle}>✔ Histórico básico</li>
+              <li style={listItemStyle}>✔ PDF e XML organizados</li>
             </ul>
 
             <button
@@ -133,23 +142,34 @@ export default function PlanosPage() {
                 cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
               }}
             >
-              {loadingPlano === "essencial" ? "Redirecionando..." : "Assinar Essencial"}
+              {loadingPlano === "essencial"
+                ? "Redirecionando..."
+                : "Assinar Essencial"}
             </button>
           </div>
 
-          <div style={{ ...cardStyle, border: "2px solid #22c55e" }}>
-            <h2 style={planTitleStyle}>Black</h2>
-            <p style={priceStyle}>R$59,90</p>
+          <div style={cardFeaturedStyle}>
+            <div style={pillRowStyle}>
+              <span style={topPillFeaturedStyle}>MAIS COMPLETO</span>
+            </div>
+
+            <h2 style={planTitleStyle}>Full</h2>
+            <p style={priceStyle}>R$ 59,90</p>
+            <p style={planTextStyle}>
+              Para quem quer operar com mais liberdade, velocidade e escala no dia a dia fiscal.
+            </p>
 
             <ul style={listStyle}>
-              <li>✔ Notas ilimitadas</li>
-              <li>✔ Emissão automática</li>
-              <li>✔ Mais velocidade</li>
-              <li>✔ Prioridade</li>
+              <li style={listItemStyle}>✔ Notas ilimitadas</li>
+              <li style={listItemStyle}>✔ Emissão automática completa</li>
+              <li style={listItemStyle}>✔ Dashboard operacional completo</li>
+              <li style={listItemStyle}>✔ Controle centralizado de clientes</li>
+              <li style={listItemStyle}>✔ Histórico completo de emissões</li>
+              <li style={listItemStyle}>✔ PDF e XML organizados</li>
             </ul>
 
             <button
-              onClick={() => assinarPlano("black")}
+              onClick={() => assinarPlano("full")}
               disabled={loadingPlano !== ""}
               style={{
                 ...buttonPrimaryStyle,
@@ -157,16 +177,40 @@ export default function PlanosPage() {
                 cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
               }}
             >
-              {loadingPlano === "black" ? "Redirecionando..." : "Assinar Black"}
+              {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
             </button>
           </div>
-        </section>
 
-        <section style={footerNoteStyle}>
-          <p>
-            Empresas e contadores com múltiplos clientes possuem plano
-            personalizado. O WhatsApp fica disponível para suporte e dúvidas.
-          </p>
+          <div style={cardStyle}>
+            <div style={pillRowStyle}>
+              <span style={topPillStyle}>Empresas e escritórios</span>
+            </div>
+
+            <h2 style={planTitleStyle}>Parceiro</h2>
+            <p style={priceConsultStyle}>R$ 30/mês + R$ 7 por cliente ativo</p>
+            <p style={planTextStyle}>
+              Ideal para empresas parceiras e escritórios que operam com múltiplos
+              clientes, cobrança escalável e emissão ilimitada.
+            </p>
+
+            <ul style={listStyle}>
+              <li style={listItemStyle}>✔ Emissões ilimitadas</li>
+              <li style={listItemStyle}>✔ Múltiplos clientes</li>
+              <li style={listItemStyle}>✔ Emissão em massa</li>
+              <li style={listItemStyle}>✔ Dashboard operacional</li>
+              <li style={listItemStyle}>✔ Estrutura escalável SaaS</li>
+              <li style={listItemStyle}>✔ Base fixa + valor por cliente ativo</li>
+            </ul>
+
+            <a
+              href={whatsappLink}
+              target="_blank"
+              rel="noreferrer"
+              style={partnerButtonStyle}
+            >
+              Falar com o consultor
+            </a>
+          </div>
         </section>
       </div>
     </main>
@@ -175,7 +219,8 @@ export default function PlanosPage() {
 
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
-  background: "#020617",
+  background:
+    "linear-gradient(135deg, #020617 0%, #081224 35%, #0f172a 65%, #071b34 100%)",
   color: "#fff",
   display: "flex",
   justifyContent: "center",
@@ -183,99 +228,166 @@ const pageStyle: React.CSSProperties = {
 };
 
 const containerStyle: React.CSSProperties = {
-  maxWidth: "900px",
+  maxWidth: "1200px",
   width: "100%",
 };
 
 const heroStyle: React.CSSProperties = {
-  textAlign: "center",
-  marginBottom: "50px",
+  marginBottom: "28px",
 };
 
 const titleStyle: React.CSSProperties = {
-  fontSize: "36px",
-  fontWeight: "800",
-  marginBottom: "20px",
+  fontSize: "48px",
+  fontWeight: 800,
+  margin: 0,
+  marginBottom: "12px",
+  lineHeight: 1.1,
 };
 
 const subtitleStyle: React.CSSProperties = {
-  fontSize: "16px",
-  color: "#94a3b8",
-  marginBottom: "30px",
-};
-
-const ctaButtonStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "14px 24px",
-  borderRadius: "10px",
-  background: "#22c55e",
-  color: "#fff",
-  fontWeight: "700",
-  textDecoration: "none",
+  fontSize: "18px",
+  color: "#cbd5e1",
+  margin: 0,
 };
 
 const plansGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "20px",
-  marginBottom: "40px",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: "18px",
 };
 
 const cardStyle: React.CSSProperties = {
-  background: "#0f172a",
-  borderRadius: "16px",
-  padding: "24px",
-  border: "1px solid #1e293b",
+  background: "rgba(2, 6, 23, 0.78)",
+  borderRadius: "24px",
+  padding: "20px",
+  border: "1px solid rgba(59, 130, 246, 0.18)",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+};
+
+const cardFeaturedStyle: React.CSSProperties = {
+  ...cardStyle,
+  border: "1px solid rgba(16, 185, 129, 0.35)",
+  boxShadow: "0 22px 50px rgba(0,0,0,0.32)",
+};
+
+const pillRowStyle: React.CSSProperties = {
+  marginBottom: "16px",
+};
+
+const topPillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 12px",
+  borderRadius: "999px",
+  background: "rgba(37, 99, 235, 0.16)",
+  border: "1px solid rgba(59, 130, 246, 0.28)",
+  color: "#dbeafe",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const topPillFeaturedStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 12px",
+  borderRadius: "999px",
+  background: "rgba(16, 185, 129, 0.16)",
+  border: "1px solid rgba(16, 185, 129, 0.28)",
+  color: "#d1fae5",
+  fontSize: "12px",
+  fontWeight: 800,
 };
 
 const planTitleStyle: React.CSSProperties = {
   fontSize: "22px",
+  margin: 0,
   marginBottom: "10px",
+  fontWeight: 800,
 };
 
 const priceStyle: React.CSSProperties = {
-  fontSize: "28px",
-  fontWeight: "800",
-  marginBottom: "20px",
+  fontSize: "30px",
+  fontWeight: 800,
+  margin: 0,
+  marginBottom: "12px",
+};
+
+const priceConsultStyle: React.CSSProperties = {
+  fontSize: "30px",
+  fontWeight: 800,
+  margin: 0,
+  marginBottom: "12px",
+  color: "#bfdbfe",
+  lineHeight: 1.3,
+};
+
+const planTextStyle: React.CSSProperties = {
+  fontSize: "15px",
+  color: "#e2e8f0",
+  lineHeight: 1.7,
+  marginBottom: "18px",
 };
 
 const listStyle: React.CSSProperties = {
   listStyle: "none",
   padding: 0,
-  marginBottom: "20px",
-  lineHeight: "28px",
+  margin: 0,
+  marginBottom: "18px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const listItemStyle: React.CSSProperties = {
+  background: "rgba(15, 23, 42, 0.92)",
+  border: "1px solid rgba(59, 130, 246, 0.16)",
+  borderRadius: "14px",
+  padding: "12px 14px",
+  lineHeight: "24px",
+  fontWeight: 700,
 };
 
 const buttonStyle: React.CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "center",
-  padding: "12px",
-  borderRadius: "10px",
-  background: "#1e293b",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
   color: "#fff",
   textDecoration: "none",
-  fontWeight: "600",
+  fontWeight: 800,
   border: "none",
+  fontSize: "16px",
 };
 
 const buttonPrimaryStyle: React.CSSProperties = {
   display: "block",
   width: "100%",
   textAlign: "center",
-  padding: "12px",
-  borderRadius: "10px",
-  background: "#22c55e",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
   color: "#fff",
   textDecoration: "none",
-  fontWeight: "700",
+  fontWeight: 800,
   border: "none",
+  fontSize: "16px",
 };
 
-const footerNoteStyle: React.CSSProperties = {
+const partnerButtonStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
   textAlign: "center",
-  color: "#94a3b8",
-  fontSize: "14px",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+  color: "#fff",
+  textDecoration: "none",
+  fontWeight: 800,
+  fontSize: "16px",
 };
 
 const successMessageStyle: React.CSSProperties = {
