@@ -212,8 +212,6 @@ function CheckoutContent() {
                     debitCard: "none",
                     ticket: "all",
                     bankTransfer: "all",
-                    atm: "none",
-                    mercadoPago: "none",
                   },
                   visual: {
                     style: {
