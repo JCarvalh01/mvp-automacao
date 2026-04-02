@@ -45,7 +45,6 @@ function resumirCodigoPix(codigo: string | null) {
   const valor = String(codigo || "").trim();
 
   if (!valor) return "";
-
   if (valor.length <= 80) return valor;
 
   return `${valor.slice(0, 80)}...`;
@@ -217,7 +216,7 @@ function CheckoutContent() {
 
         if (status.success && status.active) {
           setErro("");
-          setSucesso("Pagamento confirmado. Redirecionando...");
+          setSucesso("Pagamento confirmado automaticamente. Redirecionando...");
           redirecionarAreaCliente();
         }
       } catch (error) {
@@ -369,14 +368,14 @@ function CheckoutContent() {
       } else if (status === "pending") {
         if (result?.qr_code_base64 || result?.qr_code) {
           setSucesso(
-            "Pix gerado com sucesso. Assim que o pagamento for confirmado, vamos liberar seu plano automaticamente."
+            "Pix gerado com sucesso. Estamos aguardando a confirmação automática do pagamento."
           );
           setPixQrBase64(result.qr_code_base64 || null);
           setPixCode(result.qr_code || null);
           iniciarAutoVerificacaoPagamento();
         } else if (result?.ticket_url) {
           setSucesso(
-            "Boleto gerado com sucesso. Assim que o pagamento for confirmado, vamos liberar seu plano automaticamente."
+            "Boleto gerado com sucesso. Estamos aguardando a confirmação automática do pagamento."
           );
           setBoletoUrl(result.ticket_url);
           iniciarAutoVerificacaoPagamento();
