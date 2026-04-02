@@ -45,7 +45,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("clients")
-      .select("id, plan_type, notes_limit, is_blocked, subscription_status")
+      .select(
+        "id, plan_type, notes_limit, is_blocked, subscription_status, partner_company_id, is_active"
+      )
       .eq("id", clientId)
       .maybeSingle();
 
@@ -80,6 +82,13 @@ export async function GET(request: NextRequest) {
         notes_limit: data.notes_limit ?? null,
         is_blocked: Boolean(data.is_blocked),
         subscription_status: data.subscription_status || null,
+        partner_company_id:
+          data.partner_company_id === null || data.partner_company_id === undefined
+            ? null
+            : Number(data.partner_company_id),
+        is_active: Boolean(data.is_active),
+        is_direct_client:
+          data.partner_company_id === null || data.partner_company_id === undefined,
       },
       { status: 200 }
     );
@@ -95,4 +104,14 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function POST() {
+  return NextResponse.json(
+    {
+      success: false,
+      message: "Método POST não permitido nesta rota.",
+    },
+    { status: 405 }
+  );
 }
