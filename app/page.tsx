@@ -442,7 +442,7 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Controle centralizado de clientes</div>
                 <div style={planItemStyle}>✔ Histórico completo de emissões</div>
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
-                <div style={planItemStyle}>✔ Contador dedicado</div>
+                <div style={planItemStyle}>✔ Contador</div>
               </div>
 
               <Link
