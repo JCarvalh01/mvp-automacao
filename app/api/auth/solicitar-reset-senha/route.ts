@@ -41,12 +41,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const respostaPadrao = NextResponse.json({
-      success: true,
-      message:
-        "Se encontrarmos uma conta com este email, enviaremos um link para redefinição de senha.",
-    });
-
     const { data: usuarios, error: usuariosError } = await supabaseAdmin
       .from("users")
       .select("id, name, email, is_active")
@@ -54,7 +48,10 @@ export async function POST(request: NextRequest) {
 
     if (usuariosError) {
       console.error("Erro ao buscar users:", usuariosError);
-      return respostaPadrao;
+      return NextResponse.json(
+        { success: false, message: "Erro ao buscar o usuário." },
+        { status: 500 }
+      );
     }
 
     const usuarioAtivo =
@@ -74,7 +71,10 @@ export async function POST(request: NextRequest) {
 
       if (clientesError) {
         console.error("Erro ao buscar clients:", clientesError);
-        return respostaPadrao;
+        return NextResponse.json(
+          { success: false, message: "Erro ao buscar o cliente." },
+          { status: 500 }
+        );
       }
 
       const clienteAtivo =
@@ -87,7 +87,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!targetType || !targetId) {
-      return respostaPadrao;
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Não foi encontrado um cadastro com este e-mail.",
+        },
+        { status: 404 }
+      );
     }
 
     const rawToken = gerarToken();
@@ -113,7 +119,10 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("Erro ao salvar token:", insertError);
-      return respostaPadrao;
+      return NextResponse.json(
+        { success: false, message: "Erro ao gerar o link de redefinição." },
+        { status: 500 }
+      );
     }
 
     const baseUrl =
@@ -123,21 +132,33 @@ export async function POST(request: NextRequest) {
 
     try {
       await enviarEmailRecuperacao(email, link);
-    } catch (emailError) {
+    } catch (emailError: any) {
       console.error("Erro ao enviar email:", emailError);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            emailError?.message ||
+            "Não foi possível enviar o e-mail de recuperação.",
+        },
+        { status: 500 }
+      );
     }
 
-    return respostaPadrao;
-  } catch (error) {
+    return NextResponse.json({
+      success: true,
+      message: "Foi encaminhado no seu e-mail o link para recuperar sua senha.",
+    });
+  } catch (error: any) {
     console.error("Erro geral ao solicitar reset:", error);
 
     return NextResponse.json(
       {
-        success: true,
-        message:
-          "Se encontrarmos uma conta com este email, enviaremos um link para redefinição de senha.",
+        success: false,
+        message: error?.message || "Erro ao solicitar redefinição de senha.",
       },
-      { status: 200 }
+      { status: 500 }
     );
   }
 }

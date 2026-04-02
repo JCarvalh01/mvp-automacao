@@ -34,7 +34,7 @@ export default function ResetSenhaPage() {
       }
 
       setMensagem(
-        "Se encontrarmos uma conta com este email, enviaremos um link para redefinição de senha."
+        data?.message || "Foi encaminhado no seu e-mail o link para recuperar sua senha."
       );
       setTipoMensagem("sucesso");
       setEmail("");
@@ -67,17 +67,6 @@ export default function ResetSenhaPage() {
           </div>
         </section>
 
-        {mensagem && (
-          <div
-            style={{
-              ...messageStyle,
-              ...(tipoMensagem === "erro" ? errorMessageStyle : successMessageStyle),
-            }}
-          >
-            {mensagem}
-          </div>
-        )}
-
         <section style={loginCardStyle}>
           <div style={cardTopStyle}>
             <div>
@@ -99,6 +88,23 @@ export default function ResetSenhaPage() {
                 style={inputStyle}
               />
             </div>
+
+            {mensagem && (
+              <div
+                style={
+                  tipoMensagem === "erro"
+                    ? inlineErrorMessageStyle
+                    : inlineSuccessMessageStyle
+                }
+              >
+                <strong style={{ display: "block", marginBottom: "4px" }}>
+                  {tipoMensagem === "erro"
+                    ? "Não foi possível enviar"
+                    : "Solicitação recebida"}
+                </strong>
+                <span>{mensagem}</span>
+              </div>
+            )}
 
             <div style={helperRowStyle}>
               <Link href="/login" style={helperLinkStyle}>
@@ -211,26 +217,6 @@ const heroInfoValueStyle: React.CSSProperties = {
   color: "#ffffff",
 };
 
-const messageStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  borderRadius: "16px",
-  marginBottom: "16px",
-  fontSize: "14px",
-  border: "1px solid transparent",
-};
-
-const errorMessageStyle: React.CSSProperties = {
-  background: "rgba(239,68,68,0.12)",
-  border: "1px solid rgba(239,68,68,0.22)",
-  color: "#fecaca",
-};
-
-const successMessageStyle: React.CSSProperties = {
-  background: "rgba(16,185,129,0.12)",
-  border: "1px solid rgba(16,185,129,0.22)",
-  color: "#bbf7d0",
-};
-
 const loginCardStyle: React.CSSProperties = {
   padding: "24px",
   borderRadius: "28px",
@@ -333,4 +319,24 @@ const loginButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   fontSize: "15px",
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
+};
+
+const inlineSuccessMessageStyle: React.CSSProperties = {
+  background: "rgba(16,185,129,0.10)",
+  border: "1px solid rgba(16,185,129,0.18)",
+  color: "#d1fae5",
+  borderRadius: "16px",
+  padding: "14px 16px",
+  fontSize: "13px",
+  lineHeight: 1.5,
+};
+
+const inlineErrorMessageStyle: React.CSSProperties = {
+  background: "rgba(239,68,68,0.10)",
+  border: "1px solid rgba(239,68,68,0.18)",
+  color: "#fecaca",
+  borderRadius: "16px",
+  padding: "14px 16px",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
