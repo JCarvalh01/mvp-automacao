@@ -31,6 +31,7 @@ type ClientRow = {
   id: number;
   cnpj: string | null;
   password: string | null;
+  emissor_password?: string | null;
   partner_company_id: number | null;
   is_active: boolean | null;
   is_blocked?: boolean | null;
@@ -153,7 +154,7 @@ async function buscarInvoice(invoiceId: number) {
 async function buscarCliente(clientId: number) {
   const { data, error } = await supabaseAdmin
     .from("clients")
-    .select("id, cnpj, password, partner_company_id, is_active, is_blocked, plan_type, notes_limit")
+    .select("id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit")
     .eq("id", clientId)
     .single();
 
@@ -360,6 +361,7 @@ export async function POST(request: Request) {
     }
 
     const cliente = clienteAtual;
+    const senhaEmissor = String(cliente.emissor_password || "").trim();
 
     if (
       !isClienteDireto &&
@@ -444,7 +446,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!String(cliente.password || "").trim()) {
+    if (!senhaEmissor) {
       await marcarInvoiceErro(invoiceId, "Senha do Emissor Nacional não cadastrada.");
       return NextResponse.json(
         {
@@ -564,7 +566,7 @@ export async function POST(request: Request) {
       clientId: clientIdParsed,
       partnerCompanyId: isClienteDireto ? null : partnerCompanyIdParsed,
       cnpjEmpresa: onlyDigits(cliente.cnpj),
-      senhaEmpresa: String(cliente.password || "").trim(),
+      senhaEmpresa: senhaEmissor,
       competencyDate,
       tomadorDocumento,
       taxCode,
