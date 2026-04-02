@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { emitirNfseViaAutomacao } from "@/lib/nfseAutomation";
 import fs from "fs/promises";
 import path from "path";
 
@@ -32,6 +31,7 @@ type ClientRow = {
   id: number;
   cnpj: string | null;
   password: string | null;
+  emissor_password?: string | null;
   partner_company_id: number | null;
   is_active: boolean | null;
 };
@@ -344,7 +344,7 @@ async function atualizarInvoiceParaCancelada(
 async function buscarCliente(clientId: number): Promise<ClientRow> {
   const { data, error } = await supabaseAdmin
     .from("clients")
-    .select("id, cnpj, password, partner_company_id, is_active")
+    .select("id, cnpj, password, emissor_password, partner_company_id, is_active")
     .eq("id", clientId)
     .single();
 
@@ -353,6 +353,48 @@ async function buscarCliente(clientId: number): Promise<ClientRow> {
   }
 
   return data as ClientRow;
+}
+
+async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
+  const WORKER_URL = String(process.env.NFSE_WORKER_URL || "").trim();
+
+  if (!WORKER_URL) {
+    throw new Error("NFSE_WORKER_URL não configurado.");
+  }
+
+  const payload = job.payload || {};
+  const senhaEmissor = String(cliente.emissor_password || "").trim();
+
+  if (!cliente.cnpj || !senhaEmissor) {
+    throw new Error("Cliente sem dados fiscais completos para emissão.");
+  }
+
+  const response = await fetch(`${WORKER_URL}/emitir`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      cnpjEmpresa: cliente.cnpj,
+      senhaEmpresa: senhaEmissor,
+      competencyDate: payload.competencyDate,
+      tomadorDocumento: payload.tomadorDocumento,
+      taxCode: payload.taxCode,
+      serviceCity: payload.serviceCity,
+      serviceValue: payload.serviceValue,
+      serviceDescription: payload.serviceDescription,
+      cancelKey: payload.cancelKey || String(job.invoice_id),
+    }),
+    cache: "no-store",
+  });
+
+  const resultado = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(resultado?.message || "Erro ao chamar worker.");
+  }
+
+  return resultado;
 }
 
 async function processarJob(job: InvoiceJob) {
@@ -389,7 +431,7 @@ async function processarJob(job: InvoiceJob) {
     throw new Error("Cliente inativo.");
   }
 
-  if (!cliente.cnpj || !cliente.password?.trim()) {
+  if (!cliente.cnpj || !String(cliente.emissor_password || "").trim()) {
     throw new Error("Cliente sem dados fiscais completos para emissão.");
   }
 
@@ -399,29 +441,21 @@ async function processarJob(job: InvoiceJob) {
     jobId: job.id,
     invoiceId: job.invoice_id,
     level: "info",
-    message: "Chamando automação de emissão.",
+    message: "Chamando worker externo de emissão.",
     meta: {
       competencyDate: payload.competencyDate,
       tomadorDocumento: payload.tomadorDocumento,
       taxCode: payload.taxCode,
       serviceCity: payload.serviceCity,
       serviceValue: payload.serviceValue,
+      workerUrl: process.env.NFSE_WORKER_URL || null,
     },
   });
 
-  const resultado = await emitirNfseViaAutomacao({
-    cnpjEmpresa: cliente.cnpj,
-    senhaEmpresa: cliente.password,
-    competencyDate: payload.competencyDate,
-    tomadorDocumento: payload.tomadorDocumento,
-    taxCode: payload.taxCode,
-    serviceCity: payload.serviceCity,
-    serviceValue: payload.serviceValue,
-    serviceDescription: payload.serviceDescription,
-  } as any);
+  const resultado = await chamarWorkerEmissao(job, cliente);
 
-  if (!resultado.success) {
-    const mensagem = resultado.message || "Falha na automação.";
+  if (!resultado?.success) {
+    const mensagem = resultado?.message || "Falha na automação.";
 
     if (
       mensagem.includes("EMISSAO_CANCELADA_USUARIO") ||
@@ -494,11 +528,13 @@ export async function POST(_request: NextRequest) {
       });
     }
 
+    const agora = new Date().toISOString();
+
     const jobAtualizado: InvoiceJob = {
       ...job,
       status: "processing",
-      locked_at: new Date().toISOString(),
-      started_at: job.started_at || new Date().toISOString(),
+      locked_at: agora,
+      started_at: job.started_at || agora,
     };
 
     const attemptsAtual = await incrementarTentativa(jobAtualizado);

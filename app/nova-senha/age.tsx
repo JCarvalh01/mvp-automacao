@@ -1,45 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-export default function ResetSenhaPage() {
-  const [email, setEmail] = useState("");
+export default function NovaSenhaPage() {
+  const searchParams = useSearchParams();
+  const token = useMemo(() => searchParams.get("token") || "", [searchParams]);
+
+  const [senha, setSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState("");
   const [tipoMensagem, setTipoMensagem] = useState<"sucesso" | "erro" | "">("");
 
-  async function handleSolicitarLink() {
+  async function handleRedefinirSenha() {
     try {
       setLoading(true);
       setMensagem("");
       setTipoMensagem("");
 
-      const response = await fetch("/api/auth/solicitar-reset-senha", {
+      const response = await fetch("/api/auth/redefinir-senha", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
+          token,
+          senha,
+          confirmarSenha,
         }),
       });
 
       const data = await response.json().catch(() => null);
 
       if (!response.ok || !data?.success) {
-        setMensagem(data?.message || "Erro ao solicitar redefinição de senha.");
+        setMensagem(data?.message || "Erro ao redefinir senha.");
         setTipoMensagem("erro");
         return;
       }
 
-      setMensagem(
-        "Se encontrarmos uma conta com este email, enviaremos um link para redefinição de senha."
-      );
+      setMensagem("Senha atualizada com sucesso. Agora você já pode entrar no sistema.");
       setTipoMensagem("sucesso");
-      setEmail("");
+      setSenha("");
+      setConfirmarSenha("");
     } catch (error: any) {
-      setMensagem(error?.message || "Erro ao solicitar redefinição de senha.");
+      setMensagem(error?.message || "Erro ao redefinir senha.");
       setTipoMensagem("erro");
     } finally {
       setLoading(false);
@@ -52,17 +58,17 @@ export default function ResetSenhaPage() {
         <section style={heroCardStyle}>
           <div style={badgeStyle}>MVP_ Automação Fiscal</div>
 
-          <h1 style={heroTitleStyle}>Recuperar senha</h1>
+          <h1 style={heroTitleStyle}>Nova senha</h1>
 
           <div style={heroInfoRowStyle}>
             <div style={heroInfoCardStyle}>
               <span style={heroInfoLabelStyle}>Acesso</span>
-              <strong style={heroInfoValueStyle}>Solicitação por email</strong>
+              <strong style={heroInfoValueStyle}>Atualização segura</strong>
             </div>
 
             <div style={heroInfoCardStyle}>
               <span style={heroInfoLabelStyle}>Fluxo</span>
-              <strong style={heroInfoValueStyle}>Envio de link</strong>
+              <strong style={heroInfoValueStyle}>Nova senha</strong>
             </div>
           </div>
         </section>
@@ -81,48 +87,77 @@ export default function ResetSenhaPage() {
         <section style={loginCardStyle}>
           <div style={cardTopStyle}>
             <div>
-              <p style={cardMiniTitleStyle}>Recuperação</p>
-              <h2 style={cardTitleStyle}>Receba o link por email</h2>
+              <p style={cardMiniTitleStyle}>Senha</p>
+              <h2 style={cardTitleStyle}>Defina sua nova senha</h2>
             </div>
 
-            <div style={sidePillStyle}>Email</div>
+            <div style={sidePillStyle}>Seguro</div>
           </div>
 
-          <div style={formStyle}>
-            <div style={fieldGroupStyle}>
-              <label style={labelStyle}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seuemail@exemplo.com"
-                style={inputStyle}
-              />
+          {!token ? (
+            <div style={formStyle}>
+              <div style={infoBoxStyle}>
+                Link inválido ou ausente. Solicite uma nova redefinição de senha.
+              </div>
+
+              <div style={helperRowStyle}>
+                <Link href="/reset-senha" style={helperLinkStyle}>
+                  Solicitar novo link
+                </Link>
+
+                <Link href="/login" style={helperLinkStyle}>
+                  Voltar para login
+                </Link>
+              </div>
             </div>
+          ) : (
+            <div style={formStyle}>
+              <div style={fieldGroupStyle}>
+                <label style={labelStyle}>Nova senha</label>
+                <input
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  placeholder="Digite a nova senha"
+                  style={inputStyle}
+                />
+              </div>
 
-            <div style={helperRowStyle}>
-              <Link href="/login" style={helperLinkStyle}>
-                Voltar para login
-              </Link>
+              <div style={fieldGroupStyle}>
+                <label style={labelStyle}>Confirmar nova senha</label>
+                <input
+                  type="password"
+                  value={confirmarSenha}
+                  onChange={(e) => setConfirmarSenha(e.target.value)}
+                  placeholder="Confirme a nova senha"
+                  style={inputStyle}
+                />
+              </div>
 
-              <Link href="/cadastro-cliente" style={helperLinkStyle}>
-                Criar conta
-              </Link>
+              <div style={helperRowStyle}>
+                <Link href="/login" style={helperLinkStyle}>
+                  Voltar para login
+                </Link>
+
+                <Link href="/reset-senha" style={helperLinkStyle}>
+                  Solicitar novo link
+                </Link>
+              </div>
+
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleRedefinirSenha}
+                style={{
+                  ...loginButtonStyle,
+                  opacity: loading ? 0.78 : 1,
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                {loading ? "Atualizando..." : "Redefinir senha"}
+              </button>
             </div>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleSolicitarLink}
-              style={{
-                ...loginButtonStyle,
-                opacity: loading ? 0.78 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? "Enviando link..." : "Enviar link por email"}
-            </button>
-          </div>
+          )}
         </section>
       </div>
     </main>
@@ -320,6 +355,15 @@ const helperLinkStyle: React.CSSProperties = {
   color: "#93c5fd",
   textDecoration: "none",
   fontWeight: 700,
+};
+
+const infoBoxStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  borderRadius: "16px",
+  fontSize: "14px",
+  border: "1px solid rgba(59,130,246,0.16)",
+  background: "rgba(15,23,42,0.92)",
+  color: "#ffffff",
 };
 
 const loginButtonStyle: React.CSSProperties = {
