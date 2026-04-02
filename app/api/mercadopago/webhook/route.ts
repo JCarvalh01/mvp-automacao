@@ -48,17 +48,23 @@ function getPlanoUpdate(plano: Plano) {
   };
 }
 
-async function buscarPagamentoNoMercadoPago(paymentId: string, accessToken: string) {
-  const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
+async function buscarPagamentoNoMercadoPago(
+  paymentId: string,
+  accessToken: string
+) {
+  const response = await fetch(
+    `https://api.mercadopago.com/v1/payments/${paymentId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }
+  );
 
-  const result = await response.json();
+  const result = await response.json().catch(() => null);
 
   return {
     ok: response.ok,
@@ -125,21 +131,23 @@ export async function POST(request: NextRequest) {
     console.log("WEBHOOK consulta MP body:", JSON.stringify(paymentResponse.data));
 
     if (!paymentResponse.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Erro ao consultar pagamento no Mercado Pago.",
-          details: paymentResponse.data,
-        },
-        { status: 500 }
-      );
+      console.log("WEBHOOK pagamento não encontrado ou ainda não disponível.");
+
+      return NextResponse.json({
+        received: true,
+        ignored: true,
+        reason: "payment_not_found_or_not_ready",
+      });
     }
 
     const payment = paymentResponse.data;
     const paymentStatus = String(payment?.status || "").trim().toLowerCase();
 
     console.log("WEBHOOK payment.status:", paymentStatus);
-    console.log("WEBHOOK payment.external_reference:", payment?.external_reference);
+    console.log(
+      "WEBHOOK payment.external_reference:",
+      payment?.external_reference
+    );
 
     if (paymentStatus !== "approved") {
       console.log("WEBHOOK pagamento ainda não aprovado.");
@@ -149,14 +157,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const parsed = parseExternalReference(payment?.external_reference);
+    if (!payment?.external_reference) {
+      console.log("WEBHOOK sem external_reference, ignorando.");
 
-    if (!parsed) {
-      console.log("WEBHOOK external_reference inválida:", payment?.external_reference);
       return NextResponse.json({
         received: true,
         ignored: true,
-        reason: "external_reference inválida",
+        reason: "no_external_reference",
+      });
+    }
+
+    const parsed = parseExternalReference(payment.external_reference);
+
+    if (!parsed) {
+      console.log(
+        "WEBHOOK external_reference inválida:",
+        payment?.external_reference
+      );
+      return NextResponse.json({
+        received: true,
+        ignored: true,
+        reason: "external_reference_invalida",
       });
     }
 
@@ -167,11 +188,14 @@ export async function POST(request: NextRequest) {
 
     const { data: clienteAntes, error: clienteAntesError } = await supabaseAdmin
       .from("clients")
-      .select("id, name, email, plan_type, notes_limit, is_blocked, subscription_status")
+      .select(
+        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status"
+      )
       .eq("id", parsed.clientId)
       .maybeSingle();
 
     console.log("WEBHOOK cliente antes:", JSON.stringify(clienteAntes));
+
     if (clienteAntesError) {
       console.log("WEBHOOK erro ao buscar cliente antes:", clienteAntesError);
     }
@@ -196,11 +220,14 @@ export async function POST(request: NextRequest) {
 
     const { data: clienteDepois, error: clienteDepoisError } = await supabaseAdmin
       .from("clients")
-      .select("id, name, email, plan_type, notes_limit, is_blocked, subscription_status")
+      .select(
+        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status"
+      )
       .eq("id", parsed.clientId)
       .maybeSingle();
 
     console.log("WEBHOOK cliente depois:", JSON.stringify(clienteDepois));
+
     if (clienteDepoisError) {
       console.log("WEBHOOK erro ao buscar cliente depois:", clienteDepoisError);
     }
