@@ -4,6 +4,7 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -16,6 +17,7 @@ type ClientSession = {
   id: number;
   name?: string | null;
   email?: string | null;
+  partner_company_id?: number | null;
 };
 
 type PaymentSubmitData = {
@@ -67,6 +69,11 @@ function getClientFromLocalStorage(): ClientSession | null {
       id,
       name: parsed.name || null,
       email: parsed.email || null,
+      partner_company_id:
+        parsed.partner_company_id === null ||
+        parsed.partner_company_id === undefined
+          ? null
+          : Number(parsed.partner_company_id),
     };
   } catch (error) {
     console.log("Erro ao ler sessão do client no localStorage:", error);
@@ -89,6 +96,11 @@ function CheckoutContent() {
   const [processandoPagamento, setProcessandoPagamento] = useState(false);
   const [verificandoPagamento, setVerificandoPagamento] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [autoCheckAtivo, setAutoCheckAtivo] = useState(false);
+
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const redirecionandoRef = useRef(false);
 
   useEffect(() => {
     if (planoParam === "essencial" || planoParam === "full") {
@@ -97,6 +109,13 @@ function CheckoutContent() {
       setPlano(null);
     }
   }, [planoParam]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const info = useMemo(() => {
     if (plano === "essencial") {
@@ -120,6 +139,97 @@ function CheckoutContent() {
     return null;
   }, [plano]);
 
+  function pararAutoVerificacao() {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    setAutoCheckAtivo(false);
+  }
+
+  function redirecionarAreaCliente() {
+    if (redirecionandoRef.current) return;
+    redirecionandoRef.current = true;
+    pararAutoVerificacao();
+    window.location.href = "/area-cliente";
+  }
+
+  async function consultarStatusClienteSilencioso() {
+    const client = getClientFromLocalStorage();
+    console.log("👤 Sessão real consultarStatusClienteSilencioso:", client);
+
+    if (!client?.id) {
+      return {
+        success: false,
+        active: false,
+        message: "Sessão inválida.",
+      };
+    }
+
+    const response = await fetch(`/api/client-status?clientId=${client.id}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    const result = await response.json();
+    console.log("📦 Resultado client-status automático:", result);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        active: false,
+        message: result?.message || "Não foi possível verificar o pagamento.",
+      };
+    }
+
+    const planType = String(result?.plan_type || "").toLowerCase();
+    const subscriptionStatus = String(
+      result?.subscription_status || ""
+    ).toLowerCase();
+    const isBlocked = Boolean(result?.is_blocked);
+
+    const active =
+      (planType === "essencial" || planType === "full") &&
+      subscriptionStatus === "active" &&
+      !isBlocked;
+
+    return {
+      success: true,
+      active,
+      result,
+    };
+  }
+
+  function iniciarAutoVerificacaoPagamento() {
+    if (pollingRef.current || redirecionandoRef.current) return;
+
+    setAutoCheckAtivo(true);
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const status = await consultarStatusClienteSilencioso();
+
+        if (status.success && status.active) {
+          setErro("");
+          setSucesso("Pagamento confirmado. Redirecionando...");
+          redirecionarAreaCliente();
+        }
+      } catch (error) {
+        console.log("Erro na auto verificação do pagamento:", error);
+      }
+    }, 5000);
+
+    timeoutRef.current = setTimeout(() => {
+      pararAutoVerificacao();
+    }, 180000);
+  }
+
   async function iniciarCheckout() {
     try {
       setLoading(true);
@@ -130,6 +240,7 @@ function CheckoutContent() {
       setPixCode(null);
       setBoletoUrl(null);
       setCopiado(false);
+      pararAutoVerificacao();
 
       if (!publicKey) {
         setErro("A chave pública do Mercado Pago não está configurada.");
@@ -143,6 +254,14 @@ function CheckoutContent() {
       if (!client?.id) {
         alert("Faça login antes de continuar.");
         window.location.href = "/login";
+        return;
+      }
+
+      if (client.partner_company_id) {
+        setErro(
+          "Seu acesso é gerenciado por uma empresa parceira. Não é necessário contratar um plano individual."
+        );
+        setLoading(false);
         return;
       }
 
@@ -191,12 +310,21 @@ function CheckoutContent() {
       setPixCode(null);
       setBoletoUrl(null);
       setCopiado(false);
+      pararAutoVerificacao();
 
       const client = getClientFromLocalStorage();
       console.log("Sessão real processarPagamento:", client);
 
       if (!client?.id) {
         setErro("Faça login antes de continuar.");
+        setProcessandoPagamento(false);
+        return;
+      }
+
+      if (client.partner_company_id) {
+        setErro(
+          "Seu acesso é gerenciado por uma empresa parceira. Não é necessário contratar um plano individual."
+        );
         setProcessandoPagamento(false);
         return;
       }
@@ -236,24 +364,27 @@ function CheckoutContent() {
         setSucesso("Pagamento aprovado com sucesso. Seu plano já foi liberado.");
 
         setTimeout(() => {
-          window.location.href = "/area-cliente";
+          redirecionarAreaCliente();
         }, 1800);
       } else if (status === "pending") {
         if (result?.qr_code_base64 || result?.qr_code) {
           setSucesso(
-            "Pix gerado com sucesso. Finalize o pagamento para liberar seu plano."
+            "Pix gerado com sucesso. Assim que o pagamento for confirmado, vamos liberar seu plano automaticamente."
           );
           setPixQrBase64(result.qr_code_base64 || null);
           setPixCode(result.qr_code || null);
+          iniciarAutoVerificacaoPagamento();
         } else if (result?.ticket_url) {
           setSucesso(
-            "Boleto gerado com sucesso. Finalize o pagamento para liberar seu plano."
+            "Boleto gerado com sucesso. Assim que o pagamento for confirmado, vamos liberar seu plano automaticamente."
           );
           setBoletoUrl(result.ticket_url);
+          iniciarAutoVerificacaoPagamento();
         } else {
           setSucesso(
-            "Pagamento pendente. Assim que for confirmado, seu plano será liberado."
+            "Pagamento pendente. Assim que for confirmado, seu plano será liberado automaticamente."
           );
+          iniciarAutoVerificacaoPagamento();
         }
       } else {
         setErro(
@@ -302,40 +433,19 @@ function CheckoutContent() {
         return;
       }
 
-      const response = await fetch(`/api/client-status?clientId=${client.id}`, {
-        method: "GET",
-        cache: "no-store",
-      });
+      const status = await consultarStatusClienteSilencioso();
 
-      const result = await response.json();
-
-      console.log("📦 Resultado client-status:", result);
-
-      if (!response.ok) {
-        setErro(result?.message || "Não foi possível verificar o pagamento.");
+      if (!status.success) {
+        setErro(status.message || "Não foi possível verificar o pagamento.");
         setVerificandoPagamento(false);
         return;
       }
 
-      const planType = String(result?.plan_type || "").toLowerCase();
-      const subscriptionStatus = String(
-        result?.subscription_status || ""
-      ).toLowerCase();
-      const isBlocked = Boolean(result?.is_blocked);
-
-      console.log("📌 planType:", planType);
-      console.log("📌 subscriptionStatus:", subscriptionStatus);
-      console.log("📌 isBlocked:", isBlocked);
-
-      if (
-        (planType === "essencial" || planType === "full") &&
-        subscriptionStatus === "active" &&
-        !isBlocked
-      ) {
+      if (status.active) {
         setSucesso("Pagamento confirmado. Redirecionando...");
 
         setTimeout(() => {
-          window.location.href = "/area-cliente";
+          redirecionarAreaCliente();
         }, 1200);
 
         return;
@@ -409,6 +519,12 @@ function CheckoutContent() {
           {verificandoPagamento && (
             <div style={warningBoxStyle}>
               Verificando confirmação do pagamento...
+            </div>
+          )}
+
+          {autoCheckAtivo && !verificandoPagamento && (
+            <div style={warningBoxStyle}>
+              Aguardando confirmação automática do pagamento...
             </div>
           )}
 
