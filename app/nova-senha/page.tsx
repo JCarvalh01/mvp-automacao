@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function NovaSenhaPage() {
+function NovaSenhaContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") || "", [searchParams]);
 
@@ -161,6 +161,29 @@ export default function NovaSenhaPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function NovaSenhaPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={pageStyle}>
+          <div style={containerStyle}>
+            <section style={heroCardStyle}>
+              <div style={badgeStyle}>MVP_ Automação Fiscal</div>
+              <h1 style={heroTitleStyle}>Nova senha</h1>
+            </section>
+
+            <section style={loginCardStyle}>
+              <div style={infoBoxStyle}>Carregando recuperação de senha...</div>
+            </section>
+          </div>
+        </main>
+      }
+    >
+      <NovaSenhaContent />
+    </Suspense>
   );
 }
 
