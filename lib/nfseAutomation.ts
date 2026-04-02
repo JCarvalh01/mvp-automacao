@@ -1061,7 +1061,7 @@ export async function emitirNfseViaAutomacao(
 
       browser = await chromium.launch({
         headless,
-        channel: "chrome",
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
         slowMo: headless ? 0 : 60,
       });
 
