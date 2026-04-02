@@ -1,7 +1,44 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { getClientSession } from "@/lib/session";
+
+type ClienteSession = {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  partner_company_id?: number | null;
+};
+
+function getClientFromStorage(): ClienteSession | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem("client");
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const id = Number(parsed.id);
+    if (!id || Number.isNaN(id)) return null;
+
+    return {
+      id,
+      name: parsed.name || null,
+      email: parsed.email || null,
+      partner_company_id:
+        parsed.partner_company_id === null ||
+        parsed.partner_company_id === undefined
+          ? null
+          : Number(parsed.partner_company_id),
+    };
+  } catch (error) {
+    console.log("Erro ao ler sessão do client no localStorage:", error);
+    return null;
+  }
+}
 
 export default function PlanosPage() {
   const [loadingPlano, setLoadingPlano] = useState<"essencial" | "full" | "">("");
@@ -9,6 +46,7 @@ export default function PlanosPage() {
   const [tipoMensagem, setTipoMensagem] = useState<
     "sucesso" | "erro" | "aviso" | ""
   >("");
+  const [clienteEmpresa, setClienteEmpresa] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -32,6 +70,25 @@ export default function PlanosPage() {
       );
       setTipoMensagem("erro");
     }
+
+    const clientStorage = getClientFromStorage();
+    const clientSession = getClientSession();
+
+    const partnerCompanyId =
+      clientStorage?.partner_company_id ??
+      clientSession?.partner_company_id ??
+      null;
+
+    if (partnerCompanyId) {
+      setClienteEmpresa(true);
+
+      if (!status) {
+        setMensagem(
+          "Seu acesso é gerenciado por uma empresa parceira. Não é necessário contratar um plano individual."
+        );
+        setTipoMensagem("aviso");
+      }
+    }
   }, []);
 
   async function assinarPlano(plano: "essencial" | "full") {
@@ -40,11 +97,27 @@ export default function PlanosPage() {
       setMensagem("");
       setTipoMensagem("");
 
+      const clientStorage = getClientFromStorage();
       const clientSession = getClientSession();
+      const client = clientStorage || clientSession;
 
-      if (!clientSession?.id) {
+      if (!client?.id) {
         setMensagem("Faça login como cliente antes de assinar um plano.");
         setTipoMensagem("erro");
+        setLoadingPlano("");
+        return;
+      }
+
+      const partnerCompanyId =
+        clientStorage?.partner_company_id ??
+        clientSession?.partner_company_id ??
+        null;
+
+      if (partnerCompanyId) {
+        setMensagem(
+          "Seu acesso já é liberado por uma empresa parceira. Não é necessário contratar um plano individual."
+        );
+        setTipoMensagem("aviso");
         setLoadingPlano("");
         return;
       }
@@ -57,6 +130,12 @@ export default function PlanosPage() {
       setLoadingPlano("");
     }
   }
+
+  const mensagemStyle = useMemo(() => {
+    if (tipoMensagem === "sucesso") return successMessageStyle;
+    if (tipoMensagem === "aviso") return warningMessageStyle;
+    return errorMessageStyle;
+  }, [tipoMensagem]);
 
   return (
     <main style={pageStyle}>
@@ -72,89 +151,105 @@ export default function PlanosPage() {
           </p>
         </section>
 
-        {mensagem && (
-          <div
-            style={
-              tipoMensagem === "sucesso"
-                ? successMessageStyle
-                : tipoMensagem === "aviso"
-                ? warningMessageStyle
-                : errorMessageStyle
-            }
-          >
-            {mensagem}
-          </div>
+        {mensagem && <div style={mensagemStyle}>{mensagem}</div>}
+
+        {clienteEmpresa ? (
+          <section style={empresaCardStyle}>
+            <div style={empresaCardContentStyle}>
+              <span style={empresaPillStyle}>ACESSO VIA EMPRESA</span>
+              <h2 style={empresaTitleStyle}>Seu acesso já está liberado</h2>
+              <p style={empresaTextStyle}>
+                Este cadastro está vinculado a uma empresa parceira. Por isso,
+                você não precisa contratar um plano individual para emitir.
+              </p>
+
+              <div style={empresaActionsStyle}>
+                <a href="/area-cliente" style={empresaPrimaryButtonStyle}>
+                  Voltar para minha área
+                </a>
+
+                <a
+                  href="https://wa.me/5511982966310?text=Olá!%20Preciso%20de%20ajuda%20com%20meu%20acesso%20na%20MVP%20Automação%20Fiscal."
+                  target="_blank"
+                  rel="noreferrer"
+                  style={empresaSecondaryButtonStyle}
+                >
+                  Falar com o suporte
+                </a>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="planos-grid-responsive" style={plansGridStyle}>
+            <div className="planos-card-responsive" style={cardStyle}>
+              <div style={pillRowStyle}>
+                <span style={topPillStyle}>MEI</span>
+              </div>
+
+              <h2 style={planTitleStyle}>Essencial</h2>
+              <p style={priceStyle}>R$ 29,90</p>
+              <p style={planTextStyle}>
+                Entrada com excelente custo-benefício para quem quer começar com
+                organização.
+              </p>
+
+              <ul style={listStyle}>
+                <li style={listItemStyle}>✔ Até 10 notas por mês</li>
+                <li style={listItemStyle}>✔ Emissão individual</li>
+                <li style={listItemStyle}>✔ Histórico básico</li>
+                <li style={listItemStyle}>✔ PDF e XML organizados</li>
+              </ul>
+
+              <button
+                onClick={() => assinarPlano("essencial")}
+                disabled={loadingPlano !== ""}
+                style={{
+                  ...buttonStyle,
+                  opacity: loadingPlano !== "" ? 0.75 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
+                }}
+              >
+                {loadingPlano === "essencial"
+                  ? "Redirecionando..."
+                  : "Assinar Essencial"}
+              </button>
+            </div>
+
+            <div className="planos-card-responsive" style={cardFeaturedStyle}>
+              <div style={pillRowStyle}>
+                <span style={topPillFeaturedStyle}>MAIS COMPLETO</span>
+              </div>
+
+              <h2 style={planTitleStyle}>Full</h2>
+              <p style={priceStyle}>R$ 59,90</p>
+              <p style={planTextStyle}>
+                Para quem quer operar com mais liberdade, velocidade e escala no
+                dia a dia fiscal.
+              </p>
+
+              <ul style={listStyle}>
+                <li style={listItemStyle}>✔ Notas ilimitadas</li>
+                <li style={listItemStyle}>✔ Emissão automática completa</li>
+                <li style={listItemStyle}>✔ Dashboard operacional completo</li>
+                <li style={listItemStyle}>✔ Controle centralizado de clientes</li>
+                <li style={listItemStyle}>✔ Histórico completo de emissões</li>
+                <li style={listItemStyle}>✔ PDF e XML organizados</li>
+              </ul>
+
+              <button
+                onClick={() => assinarPlano("full")}
+                disabled={loadingPlano !== ""}
+                style={{
+                  ...buttonPrimaryStyle,
+                  opacity: loadingPlano !== "" ? 0.75 : 1,
+                  cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
+                }}
+              >
+                {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
+              </button>
+            </div>
+          </section>
         )}
-
-        <section className="planos-grid-responsive" style={plansGridStyle}>
-          <div className="planos-card-responsive" style={cardStyle}>
-            <div style={pillRowStyle}>
-              <span style={topPillStyle}>MEI</span>
-            </div>
-
-            <h2 style={planTitleStyle}>Essencial</h2>
-            <p style={priceStyle}>R$ 29,90</p>
-            <p style={planTextStyle}>
-              Entrada com excelente custo-benefício para quem quer começar com
-              organização.
-            </p>
-
-            <ul style={listStyle}>
-              <li style={listItemStyle}>✔ Até 10 notas por mês</li>
-              <li style={listItemStyle}>✔ Emissão individual</li>
-              <li style={listItemStyle}>✔ Histórico básico</li>
-              <li style={listItemStyle}>✔ PDF e XML organizados</li>
-            </ul>
-
-            <button
-              onClick={() => assinarPlano("essencial")}
-              disabled={loadingPlano !== ""}
-              style={{
-                ...buttonStyle,
-                opacity: loadingPlano !== "" ? 0.75 : 1,
-                cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
-              }}
-            >
-              {loadingPlano === "essencial"
-                ? "Redirecionando..."
-                : "Assinar Essencial"}
-            </button>
-          </div>
-
-          <div className="planos-card-responsive" style={cardFeaturedStyle}>
-            <div style={pillRowStyle}>
-              <span style={topPillFeaturedStyle}>MAIS COMPLETO</span>
-            </div>
-
-            <h2 style={planTitleStyle}>Full</h2>
-            <p style={priceStyle}>R$ 59,90</p>
-            <p style={planTextStyle}>
-              Para quem quer operar com mais liberdade, velocidade e escala no
-              dia a dia fiscal.
-            </p>
-
-            <ul style={listStyle}>
-              <li style={listItemStyle}>✔ Notas ilimitadas</li>
-              <li style={listItemStyle}>✔ Emissão automática completa</li>
-              <li style={listItemStyle}>✔ Dashboard operacional completo</li>
-              <li style={listItemStyle}>✔ Controle centralizado de clientes</li>
-              <li style={listItemStyle}>✔ Histórico completo de emissões</li>
-              <li style={listItemStyle}>✔ PDF e XML organizados</li>
-            </ul>
-
-            <button
-              onClick={() => assinarPlano("full")}
-              disabled={loadingPlano !== ""}
-              style={{
-                ...buttonPrimaryStyle,
-                opacity: loadingPlano !== "" ? 0.75 : 1,
-                cursor: loadingPlano !== "" ? "not-allowed" : "pointer",
-              }}
-            >
-              {loadingPlano === "full" ? "Redirecionando..." : "Assinar Full"}
-            </button>
-          </div>
-        </section>
       </div>
 
       <style jsx>{`
@@ -361,4 +456,78 @@ const errorMessageStyle: CSSProperties = {
   backgroundColor: "rgba(239, 68, 68, 0.12)",
   border: "1px solid rgba(239, 68, 68, 0.25)",
   color: "#fecaca",
+};
+
+const empresaCardStyle: CSSProperties = {
+  background: "rgba(2, 6, 23, 0.78)",
+  borderRadius: "24px",
+  padding: "24px",
+  border: "1px solid rgba(245, 158, 11, 0.28)",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+};
+
+const empresaCardContentStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+};
+
+const empresaPillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "fit-content",
+  padding: "8px 12px",
+  borderRadius: "999px",
+  background: "rgba(245, 158, 11, 0.16)",
+  border: "1px solid rgba(245, 158, 11, 0.28)",
+  color: "#fde68a",
+  fontSize: "12px",
+  fontWeight: 800,
+};
+
+const empresaTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "28px",
+  fontWeight: 800,
+};
+
+const empresaTextStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "16px",
+  color: "#e2e8f0",
+  lineHeight: 1.7,
+  maxWidth: "760px",
+};
+
+const empresaActionsStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "12px",
+  marginTop: "6px",
+};
+
+const empresaPrimaryButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  padding: "14px 18px",
+  borderRadius: "14px",
+  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+  color: "#fff",
+  fontWeight: 800,
+};
+
+const empresaSecondaryButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  padding: "14px 18px",
+  borderRadius: "14px",
+  background: "rgba(245, 158, 11, 0.12)",
+  border: "1px solid rgba(245, 158, 11, 0.25)",
+  color: "#fde68a",
+  fontWeight: 800,
 };
