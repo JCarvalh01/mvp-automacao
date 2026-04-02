@@ -9,6 +9,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type Plano = "essencial" | "full";
+
 function parseExternalReference(externalReference: string | null | undefined) {
   const value = String(externalReference || "");
   const match = value.match(/^client_(\d+)_(essencial|full)$/);
@@ -19,16 +21,17 @@ function parseExternalReference(externalReference: string | null | undefined) {
 
   return {
     clientId: Number(match[1]),
-    plano: match[2] as "essencial" | "full",
+    plano: match[2] as Plano,
   };
 }
 
-function getPlanoUpdate(plano: "essencial" | "full") {
+function getPlanoUpdate(plano: Plano) {
   if (plano === "essencial") {
     return {
       plan_type: "essencial",
       notes_limit: 10,
       is_blocked: false,
+      subscription_status: "active",
     };
   }
 
@@ -36,6 +39,7 @@ function getPlanoUpdate(plano: "essencial" | "full") {
     plan_type: "full",
     notes_limit: 999999,
     is_blocked: false,
+    subscription_status: "active",
   };
 }
 
@@ -67,7 +71,10 @@ export async function POST(request: NextRequest) {
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
     if (!accessToken) {
-      return NextResponse.json({ success: false }, { status: 500 });
+      return NextResponse.json(
+        { success: false, message: "MERCADO_PAGO_ACCESS_TOKEN não configurado." },
+        { status: 500 }
+      );
     }
 
     const url = new URL(request.url);
@@ -92,11 +99,16 @@ export async function POST(request: NextRequest) {
 
     const payment = await processarPagamento(String(paymentId), accessToken);
 
-    if (String(payment.status).toLowerCase() !== "approved") {
-      return NextResponse.json({ received: true, status: payment.status });
+    const status = String(payment?.status || "").toLowerCase();
+
+    if (status !== "approved") {
+      return NextResponse.json({
+        received: true,
+        status: payment?.status || null,
+      });
     }
 
-    const parsed = parseExternalReference(payment.external_reference);
+    const parsed = parseExternalReference(payment?.external_reference);
 
     if (!parsed) {
       return NextResponse.json({ received: true, ignored: true });
@@ -111,17 +123,25 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.log("Erro ao liberar plano do cliente:", error);
-      return NextResponse.json({ success: false }, { status: 500 });
+      return NextResponse.json(
+        { success: false, message: "Erro ao atualizar plano do cliente." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
       clientId: parsed.clientId,
       plano: parsed.plano,
+      status: "approved",
     });
   } catch (error) {
     console.log("Erro webhook Mercado Pago:", error);
-    return NextResponse.json({ success: false }, { status: 500 });
+
+    return NextResponse.json(
+      { success: false, message: "Erro inesperado no webhook." },
+      { status: 500 }
+    );
   }
 }
 

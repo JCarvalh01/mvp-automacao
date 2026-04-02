@@ -22,19 +22,26 @@ function getPlanoData(plano: Plano) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
     const clientId = Number(body?.clientId);
-    const plano = String(body?.plano || "") as Plano;
+    const plano = String(body?.plano || "").trim() as Plano;
 
     if (!clientId || Number.isNaN(clientId)) {
       return NextResponse.json(
-        { success: false, message: "Cliente inválido." },
+        {
+          success: false,
+          message: "Cliente inválido.",
+        },
         { status: 400 }
       );
     }
 
     if (plano !== "essencial" && plano !== "full") {
       return NextResponse.json(
-        { success: false, message: "Plano inválido." },
+        {
+          success: false,
+          message: "Plano inválido.",
+        },
         { status: 400 }
       );
     }
@@ -117,9 +124,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      init_point: result.init_point,
-      sandbox_init_point: result.sandbox_init_point || null,
-      preference_id: result.id,
+      init_point: result?.init_point || null,
+      sandbox_init_point: result?.sandbox_init_point || null,
+      preference_id: result?.id || null,
     });
   } catch (error) {
     console.log("Erro inesperado ao criar preferência:", error);

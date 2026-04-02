@@ -37,6 +37,7 @@ type ClientRow = {
   is_blocked?: boolean | null;
   plan_type?: string | null;
   notes_limit?: number | null;
+  subscription_status?: string | null;
 };
 
 type PartnerCompanyRow = {
@@ -49,6 +50,9 @@ type JobRow = {
   id: number;
   status: string | null;
 };
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,7 +98,10 @@ function getMonthStartIso() {
   return start.toISOString();
 }
 
-function getEffectiveNotesLimit(planType: string | null | undefined, dbNotesLimit?: number | null) {
+function getEffectiveNotesLimit(
+  planType: string | null | undefined,
+  dbNotesLimit?: number | null
+) {
   const plano = String(planType || "").trim().toLowerCase();
 
   if (plano === "full") return 999999;
@@ -105,6 +112,16 @@ function getEffectiveNotesLimit(planType: string | null | undefined, dbNotesLimi
   }
 
   return 0;
+}
+
+function isSubscriptionBlocked(status: string | null | undefined) {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (!value) return false;
+
+  return ["inactive", "expired", "canceled", "cancelled", "blocked"].includes(
+    value
+  );
 }
 
 async function logJob(params: {
@@ -154,7 +171,9 @@ async function buscarInvoice(invoiceId: number) {
 async function buscarCliente(clientId: number) {
   const { data, error } = await supabaseAdmin
     .from("clients")
-    .select("id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit")
+    .select(
+      "id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit, subscription_status"
+    )
     .eq("id", clientId)
     .single();
 
@@ -406,7 +425,9 @@ export async function POST(request: Request) {
       }
 
       const empresa = empresaAtual;
-      const paymentStatus = String(empresa.payment_status || "").trim().toLowerCase();
+      const paymentStatus = String(empresa.payment_status || "")
+        .trim()
+        .toLowerCase();
 
       if (empresa.is_blocked || paymentStatus !== "paid") {
         await marcarInvoiceErro(
@@ -430,6 +451,20 @@ export async function POST(request: Request) {
         {
           success: false,
           message: "Seu acesso está bloqueado por falta de pagamento.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (
+      !cliente.partner_company_id &&
+      isSubscriptionBlocked(cliente.subscription_status)
+    ) {
+      await marcarInvoiceErro(invoiceId, "Assinatura inativa ou expirada.");
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Sua assinatura está inativa. Regularize seu plano para emitir.",
         },
         { status: 403 }
       );
@@ -625,6 +660,7 @@ export async function POST(request: Request) {
         cancelKey,
         planType,
         notesLimit,
+        subscriptionStatus: cliente.subscription_status || null,
         isBlocked: Boolean(cliente.is_blocked),
         partnerCompanyId: cliente.partner_company_id,
       },
@@ -641,6 +677,7 @@ export async function POST(request: Request) {
       competencia: competencyDate,
       planType,
       notesLimit,
+      subscriptionStatus: cliente.subscription_status || null,
       isBlocked: Boolean(cliente.is_blocked),
       partnerCompanyIdCliente: cliente.partner_company_id,
     });

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -45,6 +46,7 @@ function getPlanoUpdate(plano: Plano) {
       plan_type: "essencial",
       notes_limit: 10,
       is_blocked: false,
+      subscription_status: "active",
     };
   }
 
@@ -52,7 +54,45 @@ function getPlanoUpdate(plano: Plano) {
     plan_type: "full",
     notes_limit: 999999,
     is_blocked: false,
+    subscription_status: "active",
   };
+}
+
+function isPix(paymentMethodId: string) {
+  return paymentMethodId.toLowerCase() === "pix";
+}
+
+function isTicket(paymentMethodId: string) {
+  const value = paymentMethodId.toLowerCase();
+  return (
+    value === "bolbradesco" ||
+    value === "pec" ||
+    value === "pagofacil" ||
+    value === "rapipago" ||
+    value === "redlink" ||
+    value === "cargavirtual"
+  );
+}
+
+async function liberarPlanoSeAprovado(
+  externalReference: string | null | undefined
+) {
+  const parsed = parseExternalReference(externalReference);
+
+  if (!parsed) {
+    return;
+  }
+
+  const planoUpdate = getPlanoUpdate(parsed.plano);
+
+  const { error } = await supabaseAdmin
+    .from("clients")
+    .update(planoUpdate)
+    .eq("id", parsed.clientId);
+
+  if (error) {
+    console.log("Erro ao liberar plano imediatamente:", error);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -83,7 +123,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const token = String(body?.token || "").trim();
-    const issuerId = body?.issuer_id ? String(body.issuer_id) : null;
+    const issuerId = body?.issuer_id ? String(body.issuer_id).trim() : null;
     const paymentMethodId = String(body?.payment_method_id || "").trim();
     const transactionAmount = Number(body?.transaction_amount);
     const installments = Number(body?.installments || 1);
@@ -119,15 +159,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const planoData = getPlanoData(plano);
-    const externalReference = `client_${clientId}_${plano}`;
-
     if (!Number.isFinite(transactionAmount) || transactionAmount <= 0) {
       return NextResponse.json(
         { success: false, message: "Valor inválido para pagamento." },
         { status: 400 }
       );
     }
+
+    const planoData = getPlanoData(plano);
+    const externalReference = `client_${clientId}_${plano}`;
 
     const paymentPayload: Record<string, any> = {
       transaction_amount: transactionAmount,
@@ -142,11 +182,11 @@ export async function POST(request: NextRequest) {
       notification_url: `${appUrl}/api/mercadopago/webhook`,
     };
 
-    if (token) {
+    if (token && !isPix(paymentMethodId) && !isTicket(paymentMethodId)) {
       paymentPayload.token = token;
     }
 
-    if (issuerId) {
+    if (issuerId && !isPix(paymentMethodId) && !isTicket(paymentMethodId)) {
       paymentPayload.issuer_id = issuerId;
     }
 
@@ -189,20 +229,7 @@ export async function POST(request: NextRequest) {
     const statusDetail = String(paymentResult?.status_detail || "");
 
     if (status === "approved") {
-      const parsed = parseExternalReference(paymentResult?.external_reference);
-
-      if (parsed) {
-        const planoUpdate = getPlanoUpdate(parsed.plano);
-
-        const { error } = await supabaseAdmin
-          .from("clients")
-          .update(planoUpdate)
-          .eq("id", parsed.clientId);
-
-        if (error) {
-          console.log("Erro ao liberar plano imediatamente:", error);
-        }
-      }
+      await liberarPlanoSeAprovado(paymentResult?.external_reference);
     }
 
     return NextResponse.json({
