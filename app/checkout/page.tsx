@@ -8,10 +8,15 @@ import {
   type CSSProperties,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { getClientSession } from "@/lib/session";
 import { initMercadoPago, Payment } from "@mercadopago/sdk-react";
 
 type Plano = "essencial" | "full";
+
+type ClientSession = {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+};
 
 type PaymentSubmitData = {
   formData: {
@@ -42,6 +47,31 @@ function resumirCodigoPix(codigo: string | null) {
   if (valor.length <= 80) return valor;
 
   return `${valor.slice(0, 80)}...`;
+}
+
+function getClientFromLocalStorage(): ClientSession | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem("client");
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const id = Number(parsed.id);
+    if (!id || Number.isNaN(id)) return null;
+
+    return {
+      id,
+      name: parsed.name || null,
+      email: parsed.email || null,
+    };
+  } catch (error) {
+    console.log("Erro ao ler sessão do client no localStorage:", error);
+    return null;
+  }
 }
 
 function CheckoutContent() {
@@ -107,7 +137,8 @@ function CheckoutContent() {
         return;
       }
 
-      const client = getClientSession();
+      const client = getClientFromLocalStorage();
+      console.log("Sessão real iniciarCheckout:", client);
 
       if (!client?.id) {
         alert("Faça login antes de continuar.");
@@ -134,6 +165,8 @@ function CheckoutContent() {
 
       const result = await response.json();
 
+      console.log("Resultado criar-preferencia:", result);
+
       if (!response.ok || !result?.success || !result?.preference_id) {
         setErro(result?.message || "Erro ao iniciar pagamento.");
         setLoading(false);
@@ -159,7 +192,8 @@ function CheckoutContent() {
       setBoletoUrl(null);
       setCopiado(false);
 
-      const client = getClientSession();
+      const client = getClientFromLocalStorage();
+      console.log("Sessão real processarPagamento:", client);
 
       if (!client?.id) {
         setErro("Faça login antes de continuar.");
@@ -256,9 +290,8 @@ function CheckoutContent() {
       setErro("");
       setSucesso("");
 
-      const client = getClientSession();
-
-      console.log("👤 Sessão do cliente:", client);
+      const client = getClientFromLocalStorage();
+      console.log("👤 Sessão real verificarPagamento:", client);
 
       if (!client?.id) {
         setErro("Sessão inválida. Faça login novamente.");
@@ -308,7 +341,9 @@ function CheckoutContent() {
         return;
       }
 
-      setErro("Pagamento ainda não confirmado. Aguarde mais um pouco e tente novamente.");
+      setErro(
+        "Pagamento ainda não confirmado. Aguarde mais um pouco e tente novamente."
+      );
       setVerificandoPagamento(false);
     } catch (error) {
       console.log("❌ Erro ao verificar pagamento:", error);
@@ -372,7 +407,9 @@ function CheckoutContent() {
           )}
 
           {verificandoPagamento && (
-            <div style={warningBoxStyle}>Verificando confirmação do pagamento...</div>
+            <div style={warningBoxStyle}>
+              Verificando confirmação do pagamento...
+            </div>
           )}
 
           {erro && <div style={errorBoxStyle}>{erro}</div>}
