@@ -20,6 +20,10 @@ function hashToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function normalizarEmail(email: string) {
+  return String(email || "").trim().toLowerCase();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
@@ -74,27 +78,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const email = normalizarEmail(tokenRow.email);
+
+    if (!email) {
+      return NextResponse.json(
+        { success: false, message: "Email inválido no token de recuperação." },
+        { status: 400 }
+      );
+    }
+
     if (tokenRow.target_type === "user") {
-      const { error: updateUserError } = await supabaseAdmin
+      const { data: usuarioAtualizado, error: updateUserError } = await supabaseAdmin
         .from("users")
         .update({
           password: senha,
         })
-        .eq("id", tokenRow.target_id);
+        .ilike("email", email)
+        .select("id, email")
+        .maybeSingle();
 
       if (updateUserError) {
         throw new Error(updateUserError.message);
       }
+
+      if (!usuarioAtualizado) {
+        return NextResponse.json(
+          { success: false, message: "Usuário não encontrado para atualização." },
+          { status: 404 }
+        );
+      }
     } else if (tokenRow.target_type === "client") {
-      const { error: updateClientError } = await supabaseAdmin
+      const { data: clienteAtualizado, error: updateClientError } = await supabaseAdmin
         .from("clients")
         .update({
           password: senha,
         })
-        .eq("id", tokenRow.target_id);
+        .ilike("email", email)
+        .select("id, email")
+        .maybeSingle();
 
       if (updateClientError) {
         throw new Error(updateClientError.message);
+      }
+
+      if (!clienteAtualizado) {
+        return NextResponse.json(
+          { success: false, message: "Cliente não encontrado para atualização." },
+          { status: 404 }
+        );
       }
     } else {
       return NextResponse.json(
