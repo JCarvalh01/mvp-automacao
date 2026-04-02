@@ -956,7 +956,7 @@ export default function EmitirClientePage() {
                       <div style={summaryItemLightStyle}>
                         <span style={summaryLabelStyle}>Status</span>
                         <p style={summaryValueLightStyle}>
-                          {cliente?.is_blocked ? "Bloqueado" : "Liberado para validação pelo backend"}
+                          {cliente?.is_blocked ? "Bloqueado" : "Ativo"}
                         </p>
                       </div>
                     </>

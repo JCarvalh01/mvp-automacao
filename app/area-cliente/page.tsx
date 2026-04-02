@@ -21,6 +21,7 @@ type ClienteSession = {
   plan_type?: string | null;
   notes_limit?: number | null;
   is_blocked?: boolean | null;
+  subscription_status?: string | null;
 };
 
 type Invoice = {
@@ -119,7 +120,9 @@ function getStatusMeta(status?: string | null) {
   };
 }
 
-function getPlanoLabel(planType?: string | null) {
+function getPlanoLabel(planType?: string | null, partnerCompanyId?: number | null) {
+  if (partnerCompanyId) return "Via empresa";
+
   const plano = String(planType || "").toLowerCase();
 
   if (plano === "essencial") return "Essencial";
@@ -166,12 +169,14 @@ export default function AreaClientePage() {
 
       const { data: clienteDb, error: clienteDbError } = await supabase
         .from("clients")
-        .select("plan_type, notes_limit, is_blocked")
+        .select(
+          "plan_type, notes_limit, is_blocked, subscription_status, partner_company_id, is_active"
+        )
         .eq("id", session.id)
         .single();
 
       if (clienteDbError) {
-        console.error("Erro ao buscar dados do plano do cliente:", clienteDbError);
+        console.error("Erro ao buscar dados do cliente:", clienteDbError);
       }
 
       const clienteComPlano: ClienteSession = {
@@ -179,6 +184,10 @@ export default function AreaClientePage() {
         plan_type: clienteDb?.plan_type || null,
         notes_limit: clienteDb?.notes_limit ?? 0,
         is_blocked: clienteDb?.is_blocked ?? false,
+        subscription_status: clienteDb?.subscription_status ?? null,
+        partner_company_id:
+          clienteDb?.partner_company_id ?? session.partner_company_id ?? null,
+        is_active: clienteDb?.is_active ?? session.is_active,
       };
 
       setCliente(clienteComPlano);
@@ -230,22 +239,60 @@ export default function AreaClientePage() {
     }
   }
 
+  const usoPlano = useMemo(() => {
+    if (!cliente) return null;
+
+    const hoje = new Date();
+    const mesAtual = hoje.getMonth();
+    const anoAtual = hoje.getFullYear();
+
+    const notasMes = notas.filter((n) => {
+      if (!n.created_at) return false;
+      const d = new Date(n.created_at);
+      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
+    });
+
+    const ehClienteEmpresa = Boolean(cliente.partner_company_id);
+
+    return {
+      usadas: notasMes.length,
+      limite: ehClienteEmpresa ? 999999 : Number(cliente.notes_limit || 0),
+      plano: ehClienteEmpresa ? "empresa" : cliente.plan_type || null,
+      bloqueado: Boolean(cliente.is_blocked),
+      ehClienteEmpresa,
+      subscriptionStatus: cliente.subscription_status || null,
+      ativo: Boolean(cliente.is_active),
+    };
+  }, [notas, cliente]);
+
   function emitirRapido() {
-    if (!usoPlano) return;
+    if (!usoPlano || !cliente) return;
+
+    if (!usoPlano.ativo) {
+      alert("Seu cadastro está inativo no momento.");
+      return;
+    }
 
     if (usoPlano.bloqueado) {
       alert("Seu acesso está bloqueado no momento.");
       return;
     }
 
-    if (!usoPlano.plano) {
+    if (usoPlano.ehClienteEmpresa) {
+      window.location.href = "/emitir-cliente";
+      return;
+    }
+
+    if (!usoPlano.plano || usoPlano.plano === "free") {
       alert("Escolha um plano antes de emitir.");
       window.location.href = "/planos";
       return;
     }
 
     if (usoPlano.limite > 0 && usoPlano.usadas >= usoPlano.limite) {
-      alert("Você atingiu o limite mensal do seu plano. Faça upgrade para continuar emitindo.");
+      alert(
+        "Você atingiu o limite mensal do seu plano. Faça upgrade para continuar emitindo."
+      );
       return;
     }
 
@@ -277,27 +324,6 @@ export default function AreaClientePage() {
     };
   }, [notas]);
 
-  const usoPlano = useMemo(() => {
-    if (!cliente) return null;
-
-    const hoje = new Date();
-    const mesAtual = hoje.getMonth();
-    const anoAtual = hoje.getFullYear();
-
-    const notasMes = notas.filter((n) => {
-      if (!n.created_at) return false;
-      const d = new Date(n.created_at);
-      return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-    });
-
-    return {
-      usadas: notasMes.length,
-      limite: Number(cliente.notes_limit || 0),
-      plano: cliente.plan_type || null,
-      bloqueado: Boolean(cliente.is_blocked),
-    };
-  }, [notas, cliente]);
-
   const ultimasNotas = useMemo(() => notas.slice(0, 6), [notas]);
 
   const ultimaNotaStatus = useMemo(() => {
@@ -318,11 +344,19 @@ export default function AreaClientePage() {
   const statusPlanoTexto = useMemo(() => {
     if (!usoPlano) return "Carregando plano...";
 
+    if (!usoPlano.ativo) {
+      return "Seu cadastro está inativo";
+    }
+
     if (usoPlano.bloqueado) {
       return "Seu acesso está bloqueado";
     }
 
-    if (!usoPlano.plano) {
+    if (usoPlano.ehClienteEmpresa) {
+      return "Acesso liberado pela empresa responsável";
+    }
+
+    if (!usoPlano.plano || usoPlano.plano === "free") {
       return "Escolha um plano para começar a emitir";
     }
 
@@ -336,7 +370,11 @@ export default function AreaClientePage() {
   const textoUsoPlano = useMemo(() => {
     if (!usoPlano) return "-";
 
-    if (!usoPlano.plano) return "Sem plano";
+    if (usoPlano.ehClienteEmpresa) {
+      return `${usoPlano.usadas} / ∞`;
+    }
+
+    if (!usoPlano.plano || usoPlano.plano === "free") return "Sem plano";
 
     if (usoPlano.limite === 999999) {
       return `${usoPlano.usadas} / ∞`;
@@ -367,11 +405,17 @@ export default function AreaClientePage() {
         {erro ? (
           <section style={errorCardStyle}>
             <div>
-              <h2 style={errorTitleStyle}>Não foi possível carregar a área do cliente</h2>
+              <h2 style={errorTitleStyle}>
+                Não foi possível carregar a área do cliente
+              </h2>
               <p style={errorTextStyle}>{erro}</p>
             </div>
 
-            <button type="button" onClick={carregarDados} style={retryButtonStyle}>
+            <button
+              type="button"
+              onClick={carregarDados}
+              style={retryButtonStyle}
+            >
               Tentar novamente
             </button>
           </section>
@@ -413,7 +457,9 @@ export default function AreaClientePage() {
             <div
               style={{
                 ...heroInfoGridStyle,
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(5, minmax(0, 1fr))",
               }}
             >
               <div style={heroInfoCardStyle}>
@@ -423,7 +469,9 @@ export default function AreaClientePage() {
 
               <div style={heroInfoCardStyle}>
                 <span style={heroInfoLabelStyle}>CNPJ</span>
-                <strong style={heroInfoValueStyle}>{formatCnpj(cliente?.cnpj)}</strong>
+                <strong style={heroInfoValueStyle}>
+                  {formatCnpj(cliente?.cnpj)}
+                </strong>
               </div>
 
               <div style={heroInfoCardStyle}>
@@ -434,7 +482,7 @@ export default function AreaClientePage() {
               <div style={heroInfoCardStyle}>
                 <span style={heroInfoLabelStyle}>Plano</span>
                 <strong style={heroInfoValueStyle}>
-                  {getPlanoLabel(usoPlano?.plano)}
+                  {getPlanoLabel(usoPlano?.plano, cliente?.partner_company_id)}
                 </strong>
               </div>
 
@@ -461,7 +509,8 @@ export default function AreaClientePage() {
               <span style={statusPanelLabelStyle}>Status do painel</span>
               <strong style={statusPanelValueStyle}>{ultimaNotaStatus}</strong>
               <span style={statusPanelHintStyle}>
-                {statusPlanoTexto}. Use os atalhos abaixo para emitir uma nova nota ou consultar seu histórico.
+                {statusPlanoTexto}. Use os atalhos abaixo para emitir uma nova nota
+                ou consultar seu histórico.
               </span>
             </div>
 
@@ -478,9 +527,20 @@ export default function AreaClientePage() {
                 Ver minhas notas
               </Link>
 
-              <Link href="/planos" style={upgradeButtonStyle}>
-                Fazer upgrade de plano
-              </Link>
+              {!cliente?.partner_company_id ? (
+                <Link href="/planos" style={upgradeButtonStyle}>
+                  Fazer upgrade de plano
+                </Link>
+              ) : (
+                <a
+                  href={whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={upgradeButtonStyle}
+                >
+                  Falar com o suporte
+                </a>
+              )}
 
               <button
                 type="button"
@@ -520,7 +580,9 @@ export default function AreaClientePage() {
               <span style={metricLabelStyle}>Faturamento total</span>
               <span style={metricIconStyle}>💰</span>
             </div>
-            <strong style={metricValueStyle}>{formatCurrency(resumo.faturamento)}</strong>
+            <strong style={metricValueStyle}>
+              {formatCurrency(resumo.faturamento)}
+            </strong>
             <span style={metricHintStyle}>
               Soma apenas das notas emitidas com sucesso
             </span>
@@ -587,13 +649,28 @@ export default function AreaClientePage() {
               </span>
             </Link>
 
-            <Link href="/planos" style={quickUpgradeCardStyle}>
-              <span style={quickCardBadgeStyle}>Upgrade</span>
-              <strong style={quickCardTitleStyle}>Trocar de plano</strong>
-              <span style={quickCardTextStyle}>
-                Compare os planos e faça upgrade para continuar crescendo.
-              </span>
-            </Link>
+            {!cliente?.partner_company_id ? (
+              <Link href="/planos" style={quickUpgradeCardStyle}>
+                <span style={quickCardBadgeStyle}>Upgrade</span>
+                <strong style={quickCardTitleStyle}>Trocar de plano</strong>
+                <span style={quickCardTextStyle}>
+                  Compare os planos e faça upgrade para continuar crescendo.
+                </span>
+              </Link>
+            ) : (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={quickUpgradeCardStyle}
+              >
+                <span style={quickCardBadgeStyle}>Suporte</span>
+                <strong style={quickCardTitleStyle}>Falar com o suporte</strong>
+                <span style={quickCardTextStyle}>
+                  Seu acesso é gerenciado pela empresa responsável.
+                </span>
+              </a>
+            )}
           </div>
         </section>
 
@@ -606,9 +683,20 @@ export default function AreaClientePage() {
               </p>
             </div>
 
-            <Link href="/planos" style={upgradeMiniButtonStyle}>
-              Ver planos
-            </Link>
+            {!cliente?.partner_company_id ? (
+              <Link href="/planos" style={upgradeMiniButtonStyle}>
+                Ver planos
+              </Link>
+            ) : (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={upgradeMiniButtonStyle}
+              >
+                Suporte
+              </a>
+            )}
           </div>
 
           <div
@@ -620,10 +708,12 @@ export default function AreaClientePage() {
             <div style={planoStatusCardStyle}>
               <span style={noteInfoLabelStyle}>Plano atual</span>
               <strong style={planoStatusValueStyle}>
-                {getPlanoLabel(usoPlano?.plano)}
+                {getPlanoLabel(usoPlano?.plano, cliente?.partner_company_id)}
               </strong>
               <span style={metricHintStyle}>
-                {usoPlano?.plano
+                {cliente?.partner_company_id
+                  ? "Seu acesso está vinculado à empresa responsável."
+                  : usoPlano?.plano
                   ? "Seu plano está vinculado ao seu cadastro."
                   : "Você ainda não escolheu um plano."}
               </span>
@@ -633,7 +723,9 @@ export default function AreaClientePage() {
               <span style={noteInfoLabelStyle}>Uso mensal</span>
               <strong style={planoStatusValueStyle}>{textoUsoPlano}</strong>
               <span style={metricHintStyle}>
-                {usoPlano?.limite === 999999
+                {cliente?.partner_company_id
+                  ? "Cliente de empresa com emissão liberada pela empresa."
+                  : usoPlano?.limite === 999999
                   ? "Plano com emissão ilimitada."
                   : "Quantidade usada no mês atual."}
               </span>
@@ -643,7 +735,9 @@ export default function AreaClientePage() {
               <span style={noteInfoLabelStyle}>Situação</span>
               <strong style={planoStatusValueStyle}>{statusPlanoTexto}</strong>
               <span style={metricHintStyle}>
-                Faça upgrade caso precise ampliar sua operação.
+                {cliente?.partner_company_id
+                  ? "Em caso de bloqueio, fale com a empresa responsável."
+                  : "Faça upgrade caso precise ampliar sua operação."}
               </span>
             </div>
           </div>
@@ -683,7 +777,11 @@ export default function AreaClientePage() {
                 com acesso rápido aos arquivos.
               </p>
 
-              <button type="button" onClick={emitirRapido} style={emptyActionButtonStyle}>
+              <button
+                type="button"
+                onClick={emitirRapido}
+                style={emptyActionButtonStyle}
+              >
                 Emitir minha primeira nota
               </button>
             </div>
@@ -766,7 +864,9 @@ export default function AreaClientePage() {
                             : fileButtonDisabledStyle),
                           width: isMobile ? "100%" : "76px",
                         }}
-                        title={pdfDisponivel ? "Abrir PDF" : "PDF ainda não disponível"}
+                        title={
+                          pdfDisponivel ? "Abrir PDF" : "PDF ainda não disponível"
+                        }
                       >
                         PDF
                       </button>
@@ -781,7 +881,9 @@ export default function AreaClientePage() {
                             : fileButtonDisabledStyle),
                           width: isMobile ? "100%" : "76px",
                         }}
-                        title={xmlDisponivel ? "Abrir XML" : "XML ainda não disponível"}
+                        title={
+                          xmlDisponivel ? "Abrir XML" : "XML ainda não disponível"
+                        }
                       >
                         XML
                       </button>
