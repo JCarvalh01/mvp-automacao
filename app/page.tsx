@@ -160,7 +160,9 @@ export default function HomePage() {
             <div
               style={{
                 ...heroStatsGridStyle,
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
                 gap: isMobile ? "10px" : "12px",
                 marginTop: isMobile ? "18px" : "24px",
               }}
@@ -177,7 +179,9 @@ export default function HomePage() {
 
               <div style={heroStatCardStyle}>
                 <span style={heroStatLabelStyle}>Arquivos</span>
-                <strong style={heroStatValueStyle}>PDF e XML centralizados</strong>
+                <strong style={heroStatValueStyle}>
+                  PDF e XML centralizados
+                </strong>
               </div>
             </div>
           </div>
@@ -209,11 +213,6 @@ export default function HomePage() {
                 <div style={panelCardStyle}>
                   <span style={panelCardLabelStyle}>Notas</span>
                   <strong style={panelCardValueStyle}>Emissão e histórico</strong>
-                </div>
-
-                <div style={panelCardStyle}>
-                  <span style={panelCardLabelStyle}>Pagamentos</span>
-                  <strong style={panelCardValueStyle}>Mercado Pago</strong>
                 </div>
 
                 <div style={panelCardStyle}>
@@ -254,7 +253,9 @@ export default function HomePage() {
             style={{
               ...featuresGridStyle,
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(3, minmax(0, 1fr))",
               gap: isMobile ? "12px" : "16px",
             }}
           >
@@ -351,7 +352,9 @@ export default function HomePage() {
             style={{
               ...plansGridStyle,
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(3, minmax(0, 1fr))",
               gap: isMobile ? "14px" : "16px",
             }}
           >
@@ -393,7 +396,10 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
-              <Link href="/cadastro-cliente?plano=essencial" style={planButtonStyle}>
+              <Link
+                href="/cadastro-cliente?plano=essencial"
+                style={planButtonStyle}
+              >
                 Assinar Essencial
               </Link>
             </article>
@@ -436,9 +442,13 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Controle centralizado de clientes</div>
                 <div style={planItemStyle}>✔ Histórico completo de emissões</div>
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
+                <div style={planItemStyle}>✔ Contador dedicado</div>
               </div>
 
-              <Link href="/cadastro-cliente?plano=full" style={planHighlightButtonStyle}>
+              <Link
+                href="/cadastro-cliente?plano=full"
+                style={planHighlightButtonStyle}
+              >
                 Assinar Full
               </Link>
             </article>
@@ -471,8 +481,8 @@ export default function HomePage() {
                   R$ 30/mês + R$ 7 por cliente ativo
                 </div>
                 <p style={planDescriptionStyle}>
-                  Ideal para empresas parceiras e escritórios que operam com múltiplos
-                  clientes, cobrança escalável e emissão ilimitada.
+                  Ideal para empresas parceiras e escritórios que operam com
+                  múltiplos clientes, cobrança escalável e emissão ilimitada.
                 </p>
               </div>
 
@@ -482,7 +492,9 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Emissão em massa</div>
                 <div style={planItemStyle}>✔ Dashboard operacional</div>
                 <div style={planItemStyle}>✔ Estrutura escalável SaaS</div>
-                <div style={planItemStyle}>✔ Base fixa + valor por cliente ativo</div>
+                <div style={planItemStyle}>
+                  ✔ Base fixa + valor por cliente ativo
+                </div>
               </div>
 
               <a
@@ -531,7 +543,9 @@ export default function HomePage() {
               style={{
                 ...salesGridStyle,
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
                 gap: isMobile ? "12px" : "14px",
               }}
             >

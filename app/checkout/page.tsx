@@ -57,6 +57,7 @@ function CheckoutContent() {
   const [pixCode, setPixCode] = useState<string | null>(null);
   const [boletoUrl, setBoletoUrl] = useState<string | null>(null);
   const [processandoPagamento, setProcessandoPagamento] = useState(false);
+  const [verificandoPagamento, setVerificandoPagamento] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
@@ -197,6 +198,10 @@ function CheckoutContent() {
 
       if (status === "approved") {
         setSucesso("Pagamento aprovado com sucesso. Seu plano já foi liberado.");
+
+        setTimeout(() => {
+          window.location.href = "/area-cliente";
+        }, 1800);
       } else if (status === "pending") {
         if (result?.qr_code_base64 || result?.qr_code) {
           setSucesso("Pix gerado com sucesso. Finalize o pagamento para liberar seu plano.");
@@ -235,6 +240,57 @@ function CheckoutContent() {
     }
   }
 
+  async function verificarPagamento() {
+    try {
+      setVerificandoPagamento(true);
+      setErro("");
+
+      const client = getClientSession();
+
+      if (!client?.id) {
+        setErro("Faça login antes de continuar.");
+        setVerificandoPagamento(false);
+        return;
+      }
+
+      const response = await fetch(`/api/client-status?clientId=${client.id}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setErro(result?.message || "Não foi possível verificar o pagamento.");
+        setVerificandoPagamento(false);
+        return;
+      }
+
+      const planType = String(result?.plan_type || "").toLowerCase();
+      const subscriptionStatus = String(result?.subscription_status || "").toLowerCase();
+      const isBlocked = Boolean(result?.is_blocked);
+
+      if (
+        (planType === "essencial" || planType === "full") &&
+        subscriptionStatus === "active" &&
+        !isBlocked
+      ) {
+        setSucesso("Pagamento confirmado. Redirecionando...");
+        setTimeout(() => {
+          window.location.href = "/area-cliente";
+        }, 1200);
+      } else {
+        setErro("Pagamento ainda não confirmado. Aguarde mais um pouco e tente novamente.");
+      }
+
+      setVerificandoPagamento(false);
+    } catch (error) {
+      console.log(error);
+      setErro("Erro ao verificar pagamento.");
+      setVerificandoPagamento(false);
+    }
+  }
+
   if (!info) {
     return (
       <main style={pageStyle}>
@@ -257,10 +313,10 @@ function CheckoutContent() {
             ← Voltar
           </button>
 
-          <span style={tagStyle}>Checkout seguro</span>
           <h1 className="checkout-title-responsive" style={titleStyle}>
             Confirmar assinatura
           </h1>
+
           <p className="checkout-subtitle-responsive" style={subtitleStyle}>
             Finalize sua assinatura sem sair da MVP_ Automação Fiscal.
           </p>
@@ -289,6 +345,10 @@ function CheckoutContent() {
             <div style={warningBoxStyle}>Processando pagamento...</div>
           )}
 
+          {verificandoPagamento && (
+            <div style={warningBoxStyle}>Verificando confirmação do pagamento...</div>
+          )}
+
           {erro && <div style={errorBoxStyle}>{erro}</div>}
 
           {sucesso && <div style={successBoxStyle}>{sucesso}</div>}
@@ -313,18 +373,46 @@ function CheckoutContent() {
               <button onClick={copiarCodigoPix} style={copyButtonStyle}>
                 {copiado ? "Código copiado!" : "Copiar código Pix"}
               </button>
+
+              <button
+                onClick={verificarPagamento}
+                disabled={verificandoPagamento}
+                style={
+                  verificandoPagamento
+                    ? verifyButtonDisabledStyle
+                    : verifyButtonStyle
+                }
+              >
+                {verificandoPagamento ? "Verificando..." : "Já paguei"}
+              </button>
             </div>
           )}
 
           {boletoUrl && (
-            <a
-              href={boletoUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={boletoButtonStyle}
-            >
-              Abrir boleto
-            </a>
+            <div style={copyBoxStyle}>
+              <strong style={copyTitleStyle}>Boleto gerado</strong>
+
+              <a
+                href={boletoUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={boletoButtonStyle}
+              >
+                Abrir boleto
+              </a>
+
+              <button
+                onClick={verificarPagamento}
+                disabled={verificandoPagamento}
+                style={
+                  verificandoPagamento
+                    ? verifyButtonDisabledStyle
+                    : verifyButtonStyle
+                }
+              >
+                {verificandoPagamento ? "Verificando..." : "Já paguei"}
+              </button>
+            </div>
           )}
 
           <div style={infoBoxStyle}>
@@ -502,18 +590,6 @@ const backButtonStyle: CSSProperties = {
   fontWeight: 700,
 };
 
-const tagStyle: CSSProperties = {
-  display: "inline-flex",
-  padding: "8px 12px",
-  borderRadius: "999px",
-  background: "rgba(34,197,94,0.16)",
-  border: "1px solid rgba(34,197,94,0.28)",
-  color: "#86efac",
-  fontSize: "12px",
-  fontWeight: 800,
-  marginBottom: "16px",
-};
-
 const titleStyle: CSSProperties = {
   fontSize: "30px",
   margin: 0,
@@ -681,15 +757,35 @@ const copyButtonStyle: CSSProperties = {
   fontWeight: 800,
   cursor: "pointer",
   fontSize: "14px",
+  marginTop: "4px",
+};
+
+const verifyButtonStyle: CSSProperties = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: "12px",
+  border: "none",
+  background: "#22c55e",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+  fontSize: "14px",
+  marginTop: "10px",
+};
+
+const verifyButtonDisabledStyle: CSSProperties = {
+  ...verifyButtonStyle,
+  opacity: 0.72,
+  cursor: "not-allowed",
 };
 
 const boletoButtonStyle: CSSProperties = {
   display: "block",
-  marginTop: "16px",
+  marginTop: "12px",
   padding: "14px 16px",
   borderRadius: "14px",
-  background: "#fff",
-  color: "#0f172a",
+  background: "#2563eb",
+  color: "#ffffff",
   fontWeight: 800,
   textAlign: "center",
   textDecoration: "none",
