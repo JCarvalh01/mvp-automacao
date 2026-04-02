@@ -6,8 +6,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
 );
 
 type Plano = "essencial" | "full";
@@ -27,7 +33,7 @@ function getPlanoData(plano: Plano) {
 }
 
 function parseExternalReference(externalReference: string | null | undefined) {
-  const value = String(externalReference || "");
+  const value = String(externalReference || "").trim();
   const match = value.match(/^client_(\d+)_(essencial|full)$/);
 
   if (!match) {
@@ -74,13 +80,14 @@ function isTicket(paymentMethodId: string) {
   );
 }
 
-async function liberarPlanoSeAprovado(
-  externalReference: string | null | undefined
-) {
+async function liberarPlanoSeAprovado(externalReference: string | null | undefined) {
   const parsed = parseExternalReference(externalReference);
 
+  console.log("PROCESSAR externalReference:", externalReference);
+  console.log("PROCESSAR parsed:", parsed);
+
   if (!parsed) {
-    return;
+    return { updated: false, reason: "external_reference inválida" };
   }
 
   const planoUpdate = getPlanoUpdate(parsed.plano);
@@ -91,8 +98,11 @@ async function liberarPlanoSeAprovado(
     .eq("id", parsed.clientId);
 
   if (error) {
-    console.log("Erro ao liberar plano imediatamente:", error);
+    console.log("PROCESSAR erro ao liberar plano imediatamente:", error);
+    return { updated: false, reason: error.message || "erro update" };
   }
+
+  return { updated: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -123,13 +133,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const token = String(body?.token || "").trim();
-    const issuerId = body?.issuer_id ? String(body.issuer_id).trim() : null;
+    const issuerId = body?.issuer_id ? String(body?.issuer_id).trim() : null;
     const paymentMethodId = String(body?.payment_method_id || "").trim();
     const transactionAmount = Number(body?.transaction_amount);
     const installments = Number(body?.installments || 1);
     const payerEmail = String(body?.payer?.email || "").trim();
     const clientId = Number(body?.clientId);
     const plano = String(body?.plano || "").trim() as Plano;
+
+    console.log("PROCESSAR body:", JSON.stringify({
+      paymentMethodId,
+      transactionAmount,
+      installments,
+      payerEmail,
+      clientId,
+      plano,
+      hasToken: Boolean(token),
+      issuerId,
+    }));
 
     if (!clientId || Number.isNaN(clientId)) {
       return NextResponse.json(
@@ -190,11 +211,11 @@ export async function POST(request: NextRequest) {
       paymentPayload.issuer_id = issuerId;
     }
 
+    console.log("PROCESSAR paymentPayload:", JSON.stringify(paymentPayload));
+
     const idempotencyKey =
       crypto.randomUUID?.() ||
-      `${clientId}-${plano}-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      `${clientId}-${plano}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
@@ -209,9 +230,10 @@ export async function POST(request: NextRequest) {
 
     const paymentResult = await mpResponse.json();
 
-    if (!mpResponse.ok) {
-      console.log("Erro Mercado Pago processar pagamento:", paymentResult);
+    console.log("PROCESSAR mpResponse.status:", mpResponse.status);
+    console.log("PROCESSAR paymentResult:", JSON.stringify(paymentResult));
 
+    if (!mpResponse.ok) {
       return NextResponse.json(
         {
           success: false,
@@ -228,8 +250,13 @@ export async function POST(request: NextRequest) {
     const status = String(paymentResult?.status || "").toLowerCase();
     const statusDetail = String(paymentResult?.status_detail || "");
 
+    let liberacaoImediata: any = null;
+
     if (status === "approved") {
-      await liberarPlanoSeAprovado(paymentResult?.external_reference);
+      liberacaoImediata = await liberarPlanoSeAprovado(
+        paymentResult?.external_reference
+      );
+      console.log("PROCESSAR liberacaoImediata:", liberacaoImediata);
     }
 
     return NextResponse.json({
@@ -237,6 +264,8 @@ export async function POST(request: NextRequest) {
       status,
       status_detail: statusDetail,
       id: paymentResult?.id || null,
+      external_reference: paymentResult?.external_reference || null,
+      liberacao_imediata: liberacaoImediata,
       qr_code:
         paymentResult?.point_of_interaction?.transaction_data?.qr_code || null,
       qr_code_base64:
@@ -245,13 +274,14 @@ export async function POST(request: NextRequest) {
       ticket_url:
         paymentResult?.transaction_details?.external_resource_url || null,
     });
-  } catch (error) {
-    console.log("Erro inesperado ao processar pagamento:", error);
+  } catch (error: any) {
+    console.log("PROCESSAR erro inesperado:", error);
 
     return NextResponse.json(
       {
         success: false,
         message: "Erro inesperado ao processar pagamento.",
+        details: error?.message || null,
       },
       { status: 500 }
     );
