@@ -80,7 +80,23 @@ function isTicket(paymentMethodId: string) {
   );
 }
 
-async function liberarPlanoSeAprovado(externalReference: string | null | undefined) {
+function buildWebhookUrl(appUrl: string) {
+  const url = new URL(appUrl);
+
+  if (url.hostname === "mvp-automacao.com") {
+    url.hostname = "www.mvp-automacao.com";
+  }
+
+  url.pathname = "/api/mercadopago/webhook";
+  url.search = "";
+  url.hash = "";
+
+  return url.toString();
+}
+
+async function liberarPlanoSeAprovado(
+  externalReference: string | null | undefined
+) {
   const parsed = parseExternalReference(externalReference);
 
   console.log("PROCESSAR externalReference:", externalReference);
@@ -130,6 +146,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const webhookUrl = buildWebhookUrl(appUrl);
     const body = await request.json();
 
     const token = String(body?.token || "").trim();
@@ -141,16 +158,20 @@ export async function POST(request: NextRequest) {
     const clientId = Number(body?.clientId);
     const plano = String(body?.plano || "").trim() as Plano;
 
-    console.log("PROCESSAR body:", JSON.stringify({
-      paymentMethodId,
-      transactionAmount,
-      installments,
-      payerEmail,
-      clientId,
-      plano,
-      hasToken: Boolean(token),
-      issuerId,
-    }));
+    console.log(
+      "PROCESSAR body:",
+      JSON.stringify({
+        paymentMethodId,
+        transactionAmount,
+        installments,
+        payerEmail,
+        clientId,
+        plano,
+        hasToken: Boolean(token),
+        issuerId,
+        webhookUrl,
+      })
+    );
 
     if (!clientId || Number.isNaN(clientId)) {
       return NextResponse.json(
@@ -200,7 +221,13 @@ export async function POST(request: NextRequest) {
         email: payerEmail,
       },
       external_reference: externalReference,
-      notification_url: `${appUrl}/api/mercadopago/webhook`,
+      notification_url: webhookUrl,
+      metadata: {
+        clientId,
+        plano,
+        externalReference,
+        origem: "mvp_automacao_fiscal",
+      },
     };
 
     if (token && !isPix(paymentMethodId) && !isTicket(paymentMethodId)) {
@@ -211,11 +238,16 @@ export async function POST(request: NextRequest) {
       paymentPayload.issuer_id = issuerId;
     }
 
-    console.log("PROCESSAR paymentPayload:", JSON.stringify(paymentPayload));
+    console.log(
+      "PROCESSAR paymentPayload:",
+      JSON.stringify(paymentPayload)
+    );
 
     const idempotencyKey =
       crypto.randomUUID?.() ||
-      `${clientId}-${plano}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      `${clientId}-${plano}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
 
     const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
@@ -265,6 +297,8 @@ export async function POST(request: NextRequest) {
       status_detail: statusDetail,
       id: paymentResult?.id || null,
       external_reference: paymentResult?.external_reference || null,
+      metadata: paymentResult?.metadata || null,
+      notification_url: webhookUrl,
       liberacao_imediata: liberacaoImediata,
       qr_code:
         paymentResult?.point_of_interaction?.transaction_data?.qr_code || null,
