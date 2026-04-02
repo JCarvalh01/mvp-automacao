@@ -143,7 +143,7 @@ function CheckoutContent() {
       setPreferenceId(result.preference_id);
       setLoading(false);
     } catch (error) {
-      console.log(error);
+      console.log("Erro ao iniciar checkout:", error);
       setErro("Erro inesperado ao iniciar pagamento.");
       setLoading(false);
     }
@@ -188,6 +188,8 @@ function CheckoutContent() {
 
       const result = await response.json();
 
+      console.log("Resultado processar-pagamento:", result);
+
       if (!response.ok || !result?.success) {
         setErro(result?.message || "Não foi possível processar o pagamento.");
         setProcessandoPagamento(false);
@@ -204,14 +206,20 @@ function CheckoutContent() {
         }, 1800);
       } else if (status === "pending") {
         if (result?.qr_code_base64 || result?.qr_code) {
-          setSucesso("Pix gerado com sucesso. Finalize o pagamento para liberar seu plano.");
+          setSucesso(
+            "Pix gerado com sucesso. Finalize o pagamento para liberar seu plano."
+          );
           setPixQrBase64(result.qr_code_base64 || null);
           setPixCode(result.qr_code || null);
         } else if (result?.ticket_url) {
-          setSucesso("Boleto gerado com sucesso. Finalize o pagamento para liberar seu plano.");
+          setSucesso(
+            "Boleto gerado com sucesso. Finalize o pagamento para liberar seu plano."
+          );
           setBoletoUrl(result.ticket_url);
         } else {
-          setSucesso("Pagamento pendente. Assim que for confirmado, seu plano será liberado.");
+          setSucesso(
+            "Pagamento pendente. Assim que for confirmado, seu plano será liberado."
+          );
         }
       } else {
         setErro(
@@ -222,7 +230,7 @@ function CheckoutContent() {
 
       setProcessandoPagamento(false);
     } catch (error) {
-      console.log(error);
+      console.log("Erro ao processar pagamento:", error);
       setErro("Erro inesperado ao processar o pagamento.");
       setProcessandoPagamento(false);
     }
@@ -242,14 +250,22 @@ function CheckoutContent() {
 
   async function verificarPagamento() {
     try {
+      console.log("🔍 Verificando pagamento...");
+
       setVerificandoPagamento(true);
       setErro("");
+      setSucesso("");
 
       const client = getClientSession();
 
+      console.log("👤 Sessão do cliente:", client);
+
       if (!client?.id) {
-        setErro("Faça login antes de continuar.");
+        setErro("Sessão inválida. Faça login novamente.");
         setVerificandoPagamento(false);
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 1200);
         return;
       }
 
@@ -260,6 +276,8 @@ function CheckoutContent() {
 
       const result = await response.json();
 
+      console.log("📦 Resultado client-status:", result);
+
       if (!response.ok) {
         setErro(result?.message || "Não foi possível verificar o pagamento.");
         setVerificandoPagamento(false);
@@ -267,8 +285,14 @@ function CheckoutContent() {
       }
 
       const planType = String(result?.plan_type || "").toLowerCase();
-      const subscriptionStatus = String(result?.subscription_status || "").toLowerCase();
+      const subscriptionStatus = String(
+        result?.subscription_status || ""
+      ).toLowerCase();
       const isBlocked = Boolean(result?.is_blocked);
+
+      console.log("📌 planType:", planType);
+      console.log("📌 subscriptionStatus:", subscriptionStatus);
+      console.log("📌 isBlocked:", isBlocked);
 
       if (
         (planType === "essencial" || planType === "full") &&
@@ -276,16 +300,18 @@ function CheckoutContent() {
         !isBlocked
       ) {
         setSucesso("Pagamento confirmado. Redirecionando...");
+
         setTimeout(() => {
           window.location.href = "/area-cliente";
         }, 1200);
-      } else {
-        setErro("Pagamento ainda não confirmado. Aguarde mais um pouco e tente novamente.");
+
+        return;
       }
 
+      setErro("Pagamento ainda não confirmado. Aguarde mais um pouco e tente novamente.");
       setVerificandoPagamento(false);
     } catch (error) {
-      console.log(error);
+      console.log("❌ Erro ao verificar pagamento:", error);
       setErro("Erro ao verificar pagamento.");
       setVerificandoPagamento(false);
     }
