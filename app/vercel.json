@@ -3,5 +3,10 @@
     { "path": "/api/cron/das", "schedule": "0 0 * * *" },
     { "path": "/api/cron/das", "schedule": "0 6 * * *" },
     { "path": "/api/cron/das", "schedule": "0 18 * * *" }
-  ]
+  ],
+  "functions": {
+    "app/api/emitir-nota/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

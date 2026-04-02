@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "@mercadopago/sdk-react": "^0.0.3",
