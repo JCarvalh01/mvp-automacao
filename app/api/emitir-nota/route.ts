@@ -257,7 +257,7 @@ export async function POST(request: Request) {
     const partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
     const serviceValueParsed = toNumber(body.serviceValue);
 
-    const isClienteDireto =
+    const isClienteDiretoPeloBody =
       body.partnerCompanyId === null ||
       body.partnerCompanyId === undefined ||
       String(body.partnerCompanyId).trim() === "";
@@ -275,7 +275,7 @@ export async function POST(request: Request) {
     if (
       !invoiceId ||
       Number.isNaN(clientIdParsed) ||
-      (!isClienteDireto && Number.isNaN(partnerCompanyIdParsed)) ||
+      (!isClienteDiretoPeloBody && Number.isNaN(partnerCompanyIdParsed)) ||
       !competencyDate ||
       !tomadorDocumento ||
       !taxCode ||
@@ -346,7 +346,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      !isClienteDireto &&
+      !isClienteDiretoPeloBody &&
       Number(invoice.partner_company_id) !== partnerCompanyIdParsed
     ) {
       console.error("Invoice não pertence à empresa informada.", {
@@ -381,9 +381,13 @@ export async function POST(request: Request) {
 
     const cliente = clienteAtual;
     const senhaEmissor = String(cliente.emissor_password || "").trim();
+    const clienteVinculadoEmpresa = Boolean(cliente.partner_company_id);
+    const partnerCompanyIdEfetivo = clienteVinculadoEmpresa
+      ? Number(cliente.partner_company_id)
+      : null;
 
     if (
-      !isClienteDireto &&
+      !isClienteDiretoPeloBody &&
       Number(cliente.partner_company_id) !== partnerCompanyIdParsed
     ) {
       await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
@@ -404,69 +408,6 @@ export async function POST(request: Request) {
           message: "Cliente inativo.",
         },
         { status: 400 }
-      );
-    }
-
-    if (cliente.partner_company_id) {
-      const { data: empresaAtual, error: empresaError } =
-        await buscarEmpresaParceira(cliente.partner_company_id);
-
-      if (empresaError || !empresaAtual) {
-        console.error("Empresa parceira não encontrada:", empresaError);
-
-        await marcarInvoiceErro(invoiceId, "Empresa não encontrada.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Empresa não encontrada.",
-          },
-          { status: 404 }
-        );
-      }
-
-      const empresa = empresaAtual;
-      const paymentStatus = String(empresa.payment_status || "")
-        .trim()
-        .toLowerCase();
-
-      if (empresa.is_blocked || paymentStatus !== "paid") {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Empresa bloqueada por falta de pagamento."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "A empresa responsável está com pagamento pendente.",
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    if (!cliente.partner_company_id && cliente.is_blocked) {
-      await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Seu acesso está bloqueado por falta de pagamento.",
-        },
-        { status: 403 }
-      );
-    }
-
-    if (
-      !cliente.partner_company_id &&
-      isSubscriptionBlocked(cliente.subscription_status)
-    ) {
-      await marcarInvoiceErro(invoiceId, "Assinatura inativa ou expirada.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Sua assinatura está inativa. Regularize seu plano para emitir.",
-        },
-        { status: 403 }
       );
     }
 
@@ -492,51 +433,137 @@ export async function POST(request: Request) {
       );
     }
 
-    const planType = String(cliente.plan_type || "").trim().toLowerCase();
-    const notesLimit = getEffectiveNotesLimit(planType, cliente.notes_limit);
+    // =========================================================
+    // REGRA DE NEGÓCIO
+    // =========================================================
+    // CLIENTE DE EMPRESA:
+    // - não valida plano individual
+    // - não valida subscription_status do cliente
+    // - valida somente situação da empresa + bloqueio individual
+    //
+    // CLIENTE DIRETO:
+    // - valida bloqueio
+    // - valida assinatura
+    // - valida plano
+    // - valida limite mensal
+    // =========================================================
 
-    if (!cliente.partner_company_id && !planType) {
-      await marcarInvoiceErro(invoiceId, "Cliente sem plano ativo.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Escolha um plano antes de emitir notas.",
-        },
-        { status: 403 }
-      );
-    }
+    if (clienteVinculadoEmpresa) {
+      const { data: empresaAtual, error: empresaError } =
+        await buscarEmpresaParceira(partnerCompanyIdEfetivo!);
 
-    if (!cliente.partner_company_id && planType === "essencial" && notesLimit > 0) {
-      const { count: totalNotasMes, error: countError } =
-        await contarNotasSuccessDoMes(clientIdParsed);
+      if (empresaError || !empresaAtual) {
+        console.error("Empresa parceira não encontrada:", empresaError);
 
-      if (countError) {
-        console.error("Erro ao contar notas do mês:", countError);
-
-        await marcarInvoiceErro(
-          invoiceId,
-          "Não foi possível validar o limite mensal do plano."
-        );
-
+        await marcarInvoiceErro(invoiceId, "Empresa não encontrada.");
         return NextResponse.json(
           {
             success: false,
-            message: "Não foi possível validar o limite mensal do plano.",
+            message: "Empresa não encontrada.",
           },
-          { status: 500 }
+          { status: 404 }
         );
       }
 
-      if (totalNotasMes >= notesLimit) {
-        await marcarInvoiceErro(invoiceId, "Limite de notas do plano atingido.");
+      const empresa = empresaAtual;
+      const paymentStatus = String(empresa.payment_status || "")
+        .trim()
+        .toLowerCase();
+
+      if (cliente.is_blocked) {
+        await marcarInvoiceErro(invoiceId, "Cliente bloqueado.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Seu acesso está bloqueado no momento.",
+          },
+          { status: 403 }
+        );
+      }
+
+      if (empresa.is_blocked || paymentStatus !== "paid") {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Empresa bloqueada por falta de pagamento."
+        );
 
         return NextResponse.json(
           {
             success: false,
-            message: "Limite mensal de notas atingido no plano Essencial.",
+            message: "A empresa responsável está com pagamento pendente.",
           },
-          { status: 400 }
+          { status: 403 }
         );
+      }
+    } else {
+      if (cliente.is_blocked) {
+        await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Seu acesso está bloqueado por falta de pagamento.",
+          },
+          { status: 403 }
+        );
+      }
+
+      if (isSubscriptionBlocked(cliente.subscription_status)) {
+        await marcarInvoiceErro(invoiceId, "Assinatura inativa ou expirada.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Sua assinatura está inativa. Regularize seu plano para emitir.",
+          },
+          { status: 403 }
+        );
+      }
+
+      const planType = String(cliente.plan_type || "").trim().toLowerCase();
+      const notesLimit = getEffectiveNotesLimit(planType, cliente.notes_limit);
+
+      if (!planType) {
+        await marcarInvoiceErro(invoiceId, "Cliente sem plano ativo.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Escolha um plano antes de emitir notas.",
+          },
+          { status: 403 }
+        );
+      }
+
+      if (planType === "essencial" && notesLimit > 0) {
+        const { count: totalNotasMes, error: countError } =
+          await contarNotasSuccessDoMes(clientIdParsed);
+
+        if (countError) {
+          console.error("Erro ao contar notas do mês:", countError);
+
+          await marcarInvoiceErro(
+            invoiceId,
+            "Não foi possível validar o limite mensal do plano."
+          );
+
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Não foi possível validar o limite mensal do plano.",
+            },
+            { status: 500 }
+          );
+        }
+
+        if (totalNotasMes >= notesLimit) {
+          await marcarInvoiceErro(invoiceId, "Limite de notas do plano atingido.");
+
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Limite mensal de notas atingido no plano Essencial.",
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -596,10 +623,13 @@ export async function POST(request: Request) {
       }
     }, 180000);
 
+    const planTypeLog = String(cliente.plan_type || "").trim().toLowerCase();
+    const notesLimitLog = getEffectiveNotesLimit(planTypeLog, cliente.notes_limit);
+
     const jobPayload = {
       invoiceId,
       clientId: clientIdParsed,
-      partnerCompanyId: isClienteDireto ? null : partnerCompanyIdParsed,
+      partnerCompanyId: partnerCompanyIdEfetivo,
       cnpjEmpresa: onlyDigits(cliente.cnpj),
       senhaEmpresa: senhaEmissor,
       competencyDate,
@@ -615,7 +645,7 @@ export async function POST(request: Request) {
       .from("invoice_jobs")
       .insert({
         invoice_id: invoiceId,
-        partner_company_id: isClienteDireto ? null : partnerCompanyIdParsed,
+        partner_company_id: partnerCompanyIdEfetivo,
         client_id: clientIdParsed,
         job_type: "emit_nfse",
         status: "queued",
@@ -658,11 +688,12 @@ export async function POST(request: Request) {
         serviceCity,
         serviceValue: serviceValueParsed,
         cancelKey,
-        planType,
-        notesLimit,
+        planType: planTypeLog,
+        notesLimit: notesLimitLog,
         subscriptionStatus: cliente.subscription_status || null,
         isBlocked: Boolean(cliente.is_blocked),
         partnerCompanyId: cliente.partner_company_id,
+        clienteVinculadoEmpresa,
       },
     });
 
@@ -671,15 +702,16 @@ export async function POST(request: Request) {
       jobId: novoJob.id,
       invoiceId,
       clientId: clientIdParsed,
-      partnerCompanyId: isClienteDireto ? null : partnerCompanyIdParsed,
+      partnerCompanyIdEfetivo,
       valor: serviceValueParsed,
       cidade: serviceCity,
       competencia: competencyDate,
-      planType,
-      notesLimit,
+      planType: planTypeLog,
+      notesLimit: notesLimitLog,
       subscriptionStatus: cliente.subscription_status || null,
       isBlocked: Boolean(cliente.is_blocked),
       partnerCompanyIdCliente: cliente.partner_company_id,
+      clienteVinculadoEmpresa,
     });
 
     try {
