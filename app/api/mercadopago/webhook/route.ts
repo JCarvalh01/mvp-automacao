@@ -48,6 +48,19 @@ function getPlanoUpdate(plano: Plano) {
   };
 }
 
+function getNextExpirationDate(baseDate?: string | Date | null) {
+  const base = baseDate ? new Date(baseDate) : new Date();
+
+  if (Number.isNaN(base.getTime())) {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() + 30);
+    return fallback.toISOString();
+  }
+
+  base.setDate(base.getDate() + 30);
+  return base.toISOString();
+}
+
 async function buscarPagamentoNoMercadoPago(
   paymentId: string,
   accessToken: string
@@ -149,14 +162,6 @@ export async function POST(request: NextRequest) {
       payment?.external_reference
     );
 
-    if (paymentStatus !== "approved") {
-      console.log("WEBHOOK pagamento ainda não aprovado.");
-      return NextResponse.json({
-        received: true,
-        payment_status: paymentStatus,
-      });
-    }
-
     if (!payment?.external_reference) {
       console.log("WEBHOOK sem external_reference, ignorando.");
 
@@ -184,12 +189,78 @@ export async function POST(request: NextRequest) {
     console.log("WEBHOOK parsed clientId:", parsed.clientId);
     console.log("WEBHOOK parsed plano:", parsed.plano);
 
+    const paymentIdValue =
+      payment?.id !== undefined && payment?.id !== null
+        ? String(payment.id)
+        : null;
+
+    const amountValue = Number(payment?.transaction_amount || 0);
+
+    const paidAtValue = payment?.date_approved
+      ? new Date(payment.date_approved).toISOString()
+      : null;
+
+    const createdAtValue = payment?.date_created
+      ? new Date(payment.date_created).toISOString()
+      : null;
+
+    const paymentDateBase = paidAtValue || createdAtValue || new Date().toISOString();
+    const nextExpirationDate = getNextExpirationDate(paymentDateBase);
+
+    // ======================================================
+    // REGISTRO DO PAGAMENTO NA TABELA payments
+    // ======================================================
+    try {
+      const { error: paymentSaveError } = await supabaseAdmin
+        .from("payments")
+        .upsert(
+          {
+            client_id: parsed.clientId,
+            partner_company_id: null,
+            payer_type: "client",
+            provider: "mercado_pago",
+            external_reference: payment?.external_reference || null,
+            payment_id: paymentIdValue,
+            plan_type: parsed.plano,
+            status: paymentStatus,
+            amount: Number.isFinite(amountValue) ? amountValue : 0,
+            paid_at: paidAtValue,
+            webhook_payload: body || null,
+          },
+          {
+            onConflict: "payment_id",
+          }
+        );
+
+      if (paymentSaveError) {
+        console.log(
+          "WEBHOOK erro ao salvar payment na tabela payments:",
+          paymentSaveError
+        );
+      } else {
+        console.log("WEBHOOK payment salvo/atualizado com sucesso.");
+      }
+    } catch (paymentInsertError) {
+      console.log(
+        "WEBHOOK erro inesperado ao registrar payment:",
+        paymentInsertError
+      );
+    }
+
+    if (paymentStatus !== "approved") {
+      console.log("WEBHOOK pagamento ainda não aprovado.");
+      return NextResponse.json({
+        received: true,
+        payment_status: paymentStatus,
+      });
+    }
+
     const planoUpdate = getPlanoUpdate(parsed.plano);
 
     const { data: clienteAntes, error: clienteAntesError } = await supabaseAdmin
       .from("clients")
       .select(
-        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status"
+        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status, last_payment_at, subscription_expires_at"
       )
       .eq("id", parsed.clientId)
       .maybeSingle();
@@ -200,9 +271,15 @@ export async function POST(request: NextRequest) {
       console.log("WEBHOOK erro ao buscar cliente antes:", clienteAntesError);
     }
 
+    const updateClientePayload = {
+      ...planoUpdate,
+      last_payment_at: paymentDateBase,
+      subscription_expires_at: nextExpirationDate,
+    };
+
     const { error: updateError } = await supabaseAdmin
       .from("clients")
-      .update(planoUpdate)
+      .update(updateClientePayload)
       .eq("id", parsed.clientId);
 
     if (updateError) {
@@ -221,7 +298,7 @@ export async function POST(request: NextRequest) {
     const { data: clienteDepois, error: clienteDepoisError } = await supabaseAdmin
       .from("clients")
       .select(
-        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status"
+        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status, last_payment_at, subscription_expires_at"
       )
       .eq("id", parsed.clientId)
       .maybeSingle();
@@ -236,6 +313,9 @@ export async function POST(request: NextRequest) {
       success: true,
       clientId: parsed.clientId,
       plano: parsed.plano,
+      payment_status: paymentStatus,
+      last_payment_at: paymentDateBase,
+      subscription_expires_at: nextExpirationDate,
       updated: true,
     });
   } catch (error: any) {

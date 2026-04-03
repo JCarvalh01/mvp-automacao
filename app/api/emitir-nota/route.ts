@@ -38,12 +38,16 @@ type ClientRow = {
   plan_type?: string | null;
   notes_limit?: number | null;
   subscription_status?: string | null;
+  last_payment_at?: string | null;
+  subscription_expires_at?: string | null;
 };
 
 type PartnerCompanyRow = {
   id: number;
   is_blocked?: boolean | null;
   payment_status?: string | null;
+  last_payment_at?: string | null;
+  subscription_expires_at?: string | null;
 };
 
 type JobRow = {
@@ -124,6 +128,36 @@ function isSubscriptionBlocked(status: string | null | undefined) {
   );
 }
 
+function isExpiredDate(value: string | null | undefined) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return false;
+
+  return date.getTime() < Date.now();
+}
+
+async function bloquearClientePorVencimento(clientId: number) {
+  return await supabaseAdmin
+    .from("clients")
+    .update({
+      is_blocked: true,
+      subscription_status: "expired",
+    })
+    .eq("id", clientId);
+}
+
+async function bloquearEmpresaPorVencimento(partnerCompanyId: number) {
+  return await supabaseAdmin
+    .from("partner_companies")
+    .update({
+      is_blocked: true,
+      payment_status: "expired",
+    })
+    .eq("id", partnerCompanyId);
+}
+
 async function logJob(params: {
   jobId: number;
   invoiceId: number;
@@ -172,7 +206,7 @@ async function buscarCliente(clientId: number) {
   const { data, error } = await supabaseAdmin
     .from("clients")
     .select(
-      "id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit, subscription_status"
+      "id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit, subscription_status, last_payment_at, subscription_expires_at"
     )
     .eq("id", clientId)
     .single();
@@ -186,7 +220,7 @@ async function buscarCliente(clientId: number) {
 async function buscarEmpresaParceira(partnerCompanyId: number) {
   const { data, error } = await supabaseAdmin
     .from("partner_companies")
-    .select("id, is_blocked, payment_status")
+    .select("id, is_blocked, payment_status, last_payment_at, subscription_expires_at")
     .eq("id", partnerCompanyId)
     .single();
 
@@ -446,6 +480,7 @@ export async function POST(request: Request) {
     // - valida assinatura
     // - valida plano
     // - valida limite mensal
+    // - valida vencimento automático
     // =========================================================
 
     if (clienteVinculadoEmpresa) {
@@ -470,6 +505,12 @@ export async function POST(request: Request) {
         .trim()
         .toLowerCase();
 
+      const empresaExpirada = isExpiredDate(empresa.subscription_expires_at);
+
+      if (empresaExpirada) {
+        await bloquearEmpresaPorVencimento(empresa.id);
+      }
+
       if (cliente.is_blocked) {
         await marcarInvoiceErro(invoiceId, "Cliente bloqueado.");
         return NextResponse.json(
@@ -481,7 +522,7 @@ export async function POST(request: Request) {
         );
       }
 
-      if (empresa.is_blocked || paymentStatus !== "paid") {
+      if (empresa.is_blocked || empresaExpirada || paymentStatus !== "paid") {
         await marcarInvoiceErro(
           invoiceId,
           "Empresa bloqueada por falta de pagamento."
@@ -496,7 +537,13 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      if (cliente.is_blocked) {
+      const clienteExpirado = isExpiredDate(cliente.subscription_expires_at);
+
+      if (clienteExpirado) {
+        await bloquearClientePorVencimento(cliente.id);
+      }
+
+      if (cliente.is_blocked || clienteExpirado) {
         await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
         return NextResponse.json(
           {
@@ -507,7 +554,7 @@ export async function POST(request: Request) {
         );
       }
 
-      if (isSubscriptionBlocked(cliente.subscription_status)) {
+      if (isSubscriptionBlocked(cliente.subscription_status) || clienteExpirado) {
         await marcarInvoiceErro(invoiceId, "Assinatura inativa ou expirada.");
         return NextResponse.json(
           {
@@ -691,6 +738,7 @@ export async function POST(request: Request) {
         planType: planTypeLog,
         notesLimit: notesLimitLog,
         subscriptionStatus: cliente.subscription_status || null,
+        subscriptionExpiresAt: cliente.subscription_expires_at || null,
         isBlocked: Boolean(cliente.is_blocked),
         partnerCompanyId: cliente.partner_company_id,
         clienteVinculadoEmpresa,
@@ -709,6 +757,7 @@ export async function POST(request: Request) {
       planType: planTypeLog,
       notesLimit: notesLimitLog,
       subscriptionStatus: cliente.subscription_status || null,
+      subscriptionExpiresAt: cliente.subscription_expires_at || null,
       isBlocked: Boolean(cliente.is_blocked),
       partnerCompanyIdCliente: cliente.partner_company_id,
       clienteVinculadoEmpresa,
