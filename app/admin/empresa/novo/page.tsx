@@ -1,10 +1,62 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import ProtectedPageLoader from "@/components/ProtectedPageLoader";
+
+function onlyDigits(value: string) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatCnpj(value: string) {
+  const digits = onlyDigits(value).slice(0, 14);
+
+  if (!digits) return "";
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return digits.replace(/^(\d{2})(\d+)/, "$1.$2");
+  if (digits.length <= 8) {
+    return digits.replace(/^(\d{2})(\d{3})(\d+)/, "$1.$2.$3");
+  }
+  if (digits.length <= 12) {
+    return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d+)/, "$1.$2.$3/$4");
+  }
+
+  return digits.replace(
+    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*$/,
+    "$1.$2.$3/$4-$5"
+  );
+}
+
+function formatPhone(value: string) {
+  const digits = onlyDigits(value).slice(0, 11);
+
+  if (!digits) return "";
+
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 7) {
+    return digits.replace(/^(\d{2})(\d+)/, "($1) $2");
+  }
+  if (digits.length <= 10) {
+    return digits.replace(/^(\d{2})(\d{4})(\d+)/, "($1) $2-$3");
+  }
+
+  return digits.replace(/^(\d{2})(\d{5})(\d{4}).*$/, "($1) $2-$3");
+}
+
+function parseMoney(value: string) {
+  if (!value) return 0;
+
+  const normalized = String(value)
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
 
 export default function NovaEmpresaPage() {
   const router = useRouter();
@@ -17,8 +69,20 @@ export default function NovaEmpresaPage() {
   const [endereco, setEndereco] = useState("");
   const [senha, setSenha] = useState("");
 
+  const [basePrice, setBasePrice] = useState("30,00");
+  const [pricePerClient, setPricePerClient] = useState("7,00");
+  const [clientsLimit, setClientsLimit] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState("");
+
+  const formValido = useMemo(() => {
+    return (
+      nome.trim().length >= 2 &&
+      email.trim().length >= 5 &&
+      senha.trim().length >= 3
+    );
+  }, [nome, email, senha]);
 
   async function criarEmpresa(e: React.FormEvent) {
     e.preventDefault();
@@ -28,14 +92,20 @@ export default function NovaEmpresaPage() {
       setMensagem("");
 
       const nomeLimpo = nome.trim();
-      const cnpjLimpo = cnpj.trim();
+      const cnpjLimpo = onlyDigits(cnpj);
       const emailLimpo = email.trim().toLowerCase();
-      const telefoneLimpo = telefone.trim();
+      const telefoneLimpo = onlyDigits(telefone);
       const enderecoLimpo = endereco.trim();
       const senhaLimpa = senha.trim();
 
       if (!nomeLimpo || !emailLimpo || !senhaLimpa) {
         setMensagem("Preencha nome, email e senha.");
+        setLoading(false);
+        return;
+      }
+
+      if (cnpjLimpo && cnpjLimpo.length !== 14) {
+        setMensagem("Informe um CNPJ válido.");
         setLoading(false);
         return;
       }
@@ -59,6 +129,27 @@ export default function NovaEmpresaPage() {
         return;
       }
 
+      if (cnpjLimpo) {
+        const { data: empresaExistente, error: empresaExistenteError } = await supabase
+          .from("partner_companies")
+          .select("id")
+          .eq("cnpj", cnpjLimpo)
+          .maybeSingle();
+
+        if (empresaExistenteError) {
+          console.log("Erro ao validar CNPJ existente:", empresaExistenteError);
+          setMensagem("Erro ao validar CNPJ.");
+          setLoading(false);
+          return;
+        }
+
+        if (empresaExistente) {
+          setMensagem("Já existe uma empresa com esse CNPJ.");
+          setLoading(false);
+          return;
+        }
+      }
+
       const { data: usuario, error: userError } = await supabase
         .from("users")
         .insert([
@@ -80,7 +171,7 @@ export default function NovaEmpresaPage() {
         return;
       }
 
-      const { error: empresaError } = await supabase
+      const { data: empresaCriada, error: empresaError } = await supabase
         .from("partner_companies")
         .insert([
           {
@@ -90,10 +181,17 @@ export default function NovaEmpresaPage() {
             phone: telefoneLimpo || null,
             address: enderecoLimpo || null,
             user_id: usuario.id,
+            payment_status: "unpaid",
+            is_blocked: false,
+            base_price: parseMoney(basePrice),
+            price_per_client: parseMoney(pricePerClient),
+            clients_limit: clientsLimit.trim() ? Number(clientsLimit) : null,
           },
-        ]);
+        ])
+        .select("id")
+        .single();
 
-      if (empresaError) {
+      if (empresaError || !empresaCriada) {
         console.log("Erro ao criar empresa:", empresaError);
         setMensagem("Usuário criado, mas houve erro ao criar a empresa.");
         setLoading(false);
@@ -108,10 +206,13 @@ export default function NovaEmpresaPage() {
       setTelefone("");
       setEndereco("");
       setSenha("");
+      setBasePrice("30,00");
+      setPricePerClient("7,00");
+      setClientsLimit("");
 
       setTimeout(() => {
-        router.push("/admin");
-      }, 1000);
+        router.push(`/admin/empresa/${empresaCriada.id}`);
+      }, 900);
     } catch (error) {
       console.log("Erro inesperado ao criar empresa:", error);
       setMensagem("Erro inesperado ao criar empresa.");
@@ -144,7 +245,9 @@ export default function NovaEmpresaPage() {
               <p style={heroMiniStyle}>MVP_ AUTOMAÇÃO FISCAL</p>
               <h1 style={heroTitleStyle}>Nova Empresa</h1>
               <p style={heroSubtitleStyle}>
-                Cadastre uma nova empresa parceira e libere o acesso ao sistema.
+                Cadastre uma nova empresa parceira e deixe o ambiente pronto para
+                operação empresarial, emissão em lote, cadastro em lote e gestão
+                dos clientes vinculados.
               </p>
             </div>
 
@@ -170,7 +273,8 @@ export default function NovaEmpresaPage() {
             <div>
               <h2 style={sectionTitleStyle}>Cadastro da empresa</h2>
               <p style={sectionSubtitleStyle}>
-                Preencha os dados principais para criar o acesso da empresa parceira.
+                Preencha os dados principais para criar o acesso da empresa parceira
+                e registrar a configuração financeira base.
               </p>
             </div>
           </div>
@@ -192,7 +296,7 @@ export default function NovaEmpresaPage() {
                 <input
                   placeholder="Digite o CNPJ"
                   value={cnpj}
-                  onChange={(e) => setCnpj(e.target.value)}
+                  onChange={(e) => setCnpj(formatCnpj(e.target.value))}
                   style={inputStyle}
                 />
               </div>
@@ -213,7 +317,7 @@ export default function NovaEmpresaPage() {
                 <input
                   placeholder="Digite o telefone"
                   value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
+                  onChange={(e) => setTelefone(formatPhone(e.target.value))}
                   style={inputStyle}
                 />
               </div>
@@ -238,24 +342,57 @@ export default function NovaEmpresaPage() {
                   style={inputStyle}
                 />
               </div>
+
+              <div style={fieldGroupStyle}>
+                <label style={labelStyle}>Base mensal</label>
+                <input
+                  placeholder="30,00"
+                  value={basePrice}
+                  onChange={(e) => setBasePrice(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldGroupStyle}>
+                <label style={labelStyle}>Valor por cliente</label>
+                <input
+                  placeholder="7,00"
+                  value={pricePerClient}
+                  onChange={(e) => setPricePerClient(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldGroupStyle}>
+                <label style={labelStyle}>Limite de clientes</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Opcional"
+                  value={clientsLimit}
+                  onChange={(e) => setClientsLimit(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
             </div>
 
             <div style={infoBoxStyle}>
               <p style={infoTextStyle}>
                 Essa ação cria um usuário do tipo <strong>partner_company</strong> na tabela
                 <strong> users</strong> e depois cria o registro correspondente em
-                <strong> partner_companies</strong>.
+                <strong> partner_companies</strong>, já deixando a empresa com base mensal,
+                valor por cliente, status financeiro inicial e sem bloqueio.
               </p>
             </div>
 
             <div style={actionsStyle}>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !formValido}
                 style={{
                   ...primaryButtonStyle,
-                  opacity: loading ? 0.75 : 1,
-                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading || !formValido ? 0.75 : 1,
+                  cursor: loading || !formValido ? "not-allowed" : "pointer",
                 }}
               >
                 {loading ? "Criando..." : "Criar empresa"}

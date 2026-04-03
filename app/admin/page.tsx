@@ -24,6 +24,8 @@ type Empresa = {
   clients_limit?: number | null;
   price_per_client?: number | null;
   base_price?: number | null;
+  last_payment_date?: string | null;
+  next_due_date?: string | null;
 };
 
 type Usuario = {
@@ -142,6 +144,84 @@ export default function AdminPage() {
     }
   }
 
+  async function marcarEmpresaComoPaga(empresaId: number) {
+    try {
+      setActionLoadingId(empresaId);
+      setMensagem("");
+
+      const hoje = new Date();
+      const proximoVencimento = new Date(hoje);
+      proximoVencimento.setDate(proximoVencimento.getDate() + 30);
+
+      const payload: Partial<Empresa> = {
+        payment_status: "paid",
+        is_blocked: false,
+        last_payment_date: hoje.toISOString().split("T")[0],
+        next_due_date: proximoVencimento.toISOString().split("T")[0],
+      };
+
+      const { error } = await supabase
+        .from("partner_companies")
+        .update(payload)
+        .eq("id", empresaId);
+
+      if (error) {
+        console.log("Erro ao marcar empresa como paga:", error);
+        setMensagem("Não foi possível atualizar o pagamento da empresa.");
+        return;
+      }
+
+      setEmpresas((prev) =>
+        prev.map((empresa) =>
+          empresa.id === empresaId ? { ...empresa, ...payload } : empresa
+        )
+      );
+
+      setMensagem("Empresa marcada como paga com sucesso.");
+    } catch (error) {
+      console.log("Erro inesperado ao marcar empresa como paga:", error);
+      setMensagem("Erro inesperado ao atualizar pagamento da empresa.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function marcarEmpresaComoNaoPaga(empresaId: number) {
+    try {
+      setActionLoadingId(empresaId);
+      setMensagem("");
+
+      const payload: Partial<Empresa> = {
+        payment_status: "unpaid",
+        is_blocked: true,
+      };
+
+      const { error } = await supabase
+        .from("partner_companies")
+        .update(payload)
+        .eq("id", empresaId);
+
+      if (error) {
+        console.log("Erro ao marcar empresa como não paga:", error);
+        setMensagem("Não foi possível atualizar o status da empresa.");
+        return;
+      }
+
+      setEmpresas((prev) =>
+        prev.map((empresa) =>
+          empresa.id === empresaId ? { ...empresa, ...payload } : empresa
+        )
+      );
+
+      setMensagem("Empresa marcada como não paga e bloqueada.");
+    } catch (error) {
+      console.log("Erro inesperado ao marcar empresa como não paga:", error);
+      setMensagem("Erro inesperado ao atualizar empresa.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   const empresasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
@@ -186,6 +266,15 @@ export default function AdminPage() {
       style: "currency",
       currency: "BRL",
     });
+  }
+
+  function formatarData(valor?: string | null) {
+    if (!valor) return "Não definido";
+
+    const data = new Date(valor);
+    if (Number.isNaN(data.getTime())) return valor;
+
+    return data.toLocaleDateString("pt-BR");
   }
 
   function abrirEmpresa(empresaId: number) {
@@ -466,6 +555,20 @@ export default function AdminPage() {
                           {empresa.address || "Não informado"}
                         </strong>
                       </div>
+
+                      <div style={infoBoxStyle}>
+                        <span style={infoLabelStyle}>Último pagamento</span>
+                        <strong style={infoValueStyle}>
+                          {formatarData(empresa.last_payment_date)}
+                        </strong>
+                      </div>
+
+                      <div style={infoBoxStyle}>
+                        <span style={infoLabelStyle}>Próximo vencimento</span>
+                        <strong style={infoValueStyle}>
+                          {formatarData(empresa.next_due_date)}
+                        </strong>
+                      </div>
                     </div>
 
                     <div style={actionsStyle}>
@@ -498,13 +601,7 @@ export default function AdminPage() {
                               ? "not-allowed"
                               : "pointer",
                         }}
-                        onClick={() =>
-                          atualizarEmpresa(
-                            empresa.id,
-                            { payment_status: "paid" },
-                            "Empresa marcada como paga com sucesso."
-                          )
-                        }
+                        onClick={() => marcarEmpresaComoPaga(empresa.id)}
                       >
                         {estaCarregandoAcao ? "Salvando..." : "Marcar como pago"}
                       </button>
@@ -530,16 +627,7 @@ export default function AdminPage() {
                               ? "not-allowed"
                               : "pointer",
                         }}
-                        onClick={() =>
-                          atualizarEmpresa(
-                            empresa.id,
-                            {
-                              payment_status: "unpaid",
-                              is_blocked: true,
-                            },
-                            "Empresa marcada como não paga e bloqueada."
-                          )
-                        }
+                        onClick={() => marcarEmpresaComoNaoPaga(empresa.id)}
                       >
                         {estaCarregandoAcao ? "Salvando..." : "Marcar como não pago"}
                       </button>
