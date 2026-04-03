@@ -19,109 +19,134 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
+function autorizado(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return true;
 
-    // 🔒 Segurança (IMPORTANTE)
-    if (cronSecret) {
-      const expected = `Bearer ${cronSecret}`;
-      if (authHeader !== expected) {
-        return NextResponse.json(
-          { success: false, message: "Não autorizado." },
-          { status: 401 }
-        );
-      }
-    }
+  const authHeader = request.headers.get("authorization");
+  return authHeader === `Bearer ${cronSecret}`;
+}
 
-    const now = nowIso();
+async function executarBloqueio() {
+  const now = nowIso();
 
-    console.log("CRON INICIADO:", now);
+  console.log("CRON INICIADO:", now);
 
-    // ======================================================
-    // CLIENTES VENCIDOS
-    // ======================================================
-    const { data: clientesVencidos, error: clientesError } =
-      await supabaseAdmin
+  const { data: clientes, error: clientesError } = await supabaseAdmin
+    .from("clients")
+    .select("id, subscription_expires_at, is_blocked")
+    .not("subscription_expires_at", "is", null)
+    .lte("subscription_expires_at", now)
+    .eq("is_blocked", false);
+
+  let totalClientes = 0;
+
+  if (clientesError) {
+    console.log("Erro ao buscar clientes:", clientesError);
+  }
+
+  if (clientes && clientes.length > 0) {
+    for (const cliente of clientes) {
+      const { error } = await supabaseAdmin
         .from("clients")
-        .select("id, subscription_expires_at, is_blocked")
-        .lte("subscription_expires_at", now)
-        .eq("is_blocked", false);
+        .update({
+          is_blocked: true,
+          subscription_status: "expired",
+        })
+        .eq("id", cliente.id);
 
-    if (clientesError) {
-      console.log("Erro ao buscar clientes vencidos:", clientesError);
-    }
-
-    let totalClientesBloqueados = 0;
-
-    if (clientesVencidos && clientesVencidos.length > 0) {
-      for (const cliente of clientesVencidos) {
-        const { error } = await supabaseAdmin
-          .from("clients")
-          .update({
-            is_blocked: true,
-            subscription_status: "expired",
-          })
-          .eq("id", cliente.id);
-
-        if (!error) {
-          totalClientesBloqueados++;
-        } else {
-          console.log("Erro ao bloquear cliente:", cliente.id, error);
-        }
+      if (!error) {
+        totalClientes++;
+      } else {
+        console.log("Erro ao bloquear cliente:", cliente.id, error);
       }
     }
+  }
 
-    // ======================================================
-    // EMPRESAS VENCIDAS
-    // ======================================================
-    const { data: empresasVencidas, error: empresasError } =
-      await supabaseAdmin
+  const { data: empresas, error: empresasError } = await supabaseAdmin
+    .from("partner_companies")
+    .select("id, subscription_expires_at, is_blocked")
+    .not("subscription_expires_at", "is", null)
+    .lte("subscription_expires_at", now)
+    .eq("is_blocked", false);
+
+  let totalEmpresas = 0;
+
+  if (empresasError) {
+    console.log("Erro ao buscar empresas:", empresasError);
+  }
+
+  if (empresas && empresas.length > 0) {
+    for (const empresa of empresas) {
+      const { error } = await supabaseAdmin
         .from("partner_companies")
-        .select("id, subscription_expires_at, is_blocked")
-        .lte("subscription_expires_at", now)
-        .eq("is_blocked", false);
+        .update({
+          is_blocked: true,
+          payment_status: "expired",
+        })
+        .eq("id", empresa.id);
 
-    if (empresasError) {
-      console.log("Erro ao buscar empresas vencidas:", empresasError);
-    }
-
-    let totalEmpresasBloqueadas = 0;
-
-    if (empresasVencidas && empresasVencidas.length > 0) {
-      for (const empresa of empresasVencidas) {
-        const { error } = await supabaseAdmin
-          .from("partner_companies")
-          .update({
-            is_blocked: true,
-            payment_status: "expired",
-          })
-          .eq("id", empresa.id);
-
-        if (!error) {
-          totalEmpresasBloqueadas++;
-        } else {
-          console.log("Erro ao bloquear empresa:", empresa.id, error);
-        }
+      if (!error) {
+        totalEmpresas++;
+      } else {
+        console.log("Erro ao bloquear empresa:", empresa.id, error);
       }
     }
+  }
 
-    console.log("CRON FINALIZADO");
+  console.log("CRON FINALIZADO");
 
-    return NextResponse.json({
-      success: true,
-      now,
-      clientes_bloqueados: totalClientesBloqueados,
-      empresas_bloqueadas: totalEmpresasBloqueadas,
-    });
+  return {
+    success: true,
+    now,
+    clientes_bloqueados: totalClientes,
+    empresas_bloqueadas: totalEmpresas,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    if (!autorizado(request)) {
+      return NextResponse.json(
+        { success: false, message: "Não autorizado." },
+        { status: 401 }
+      );
+    }
+
+    const result = await executarBloqueio();
+    return NextResponse.json(result);
   } catch (error: any) {
-    console.log("Erro no CRON:", error);
+    console.log("Erro no CRON GET:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Erro no processamento do cron.",
+        message: "Erro no cron",
+        details: error?.message || null,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    if (!autorizado(request)) {
+      return NextResponse.json(
+        { success: false, message: "Não autorizado." },
+        { status: 401 }
+      );
+    }
+
+    const result = await executarBloqueio();
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.log("Erro no CRON POST:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Erro no cron",
         details: error?.message || null,
       },
       { status: 500 }
