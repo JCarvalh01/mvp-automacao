@@ -222,6 +222,7 @@ export async function POST(request: NextRequest) {
       },
       external_reference: externalReference,
       notification_url: webhookUrl,
+      statement_descriptor: "MVP AUTOMACAO",
       metadata: {
         clientId,
         plano,

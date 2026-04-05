@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
         pending: `${appUrl}/planos?status=pending`,
       },
       auto_return: "approved",
+      statement_descriptor: "MVP AUTOMACAO",
     };
 
     const response = await fetch(
