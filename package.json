@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx playwright install --with-deps chromium && next build",
+    "build": "npx playwright install chromium && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "npx playwright install --with-deps chromium"
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "@mercadopago/sdk-react": "^0.0.3",
