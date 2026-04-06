@@ -138,6 +138,22 @@ function isExpiredDate(value: string | null | undefined) {
   return date.getTime() < Date.now();
 }
 
+function isFinalInvoiceSuccess(invoice: InvoiceRow | null | undefined) {
+  if (!invoice) return false;
+
+  const status = String(invoice.status || "").trim().toLowerCase();
+  const hasStatusSuccess = status === "success";
+  const hasNfseKey = Boolean(String(invoice.nfse_key || "").trim());
+  const hasPdf = Boolean(
+    String(invoice.pdf_url || invoice.pdf_path || "").trim()
+  );
+  const hasXml = Boolean(
+    String(invoice.xml_url || invoice.xml_path || "").trim()
+  );
+
+  return hasStatusSuccess && hasNfseKey && hasPdf && hasXml;
+}
+
 async function bloquearClientePorVencimento(clientId: number) {
   return await supabaseAdmin
     .from("clients")
@@ -220,7 +236,9 @@ async function buscarCliente(clientId: number) {
 async function buscarEmpresaParceira(partnerCompanyId: number) {
   const { data, error } = await supabaseAdmin
     .from("partner_companies")
-    .select("id, is_blocked, payment_status, last_payment_at, subscription_expires_at")
+    .select(
+      "id, is_blocked, payment_status, last_payment_at, subscription_expires_at"
+    )
     .eq("id", partnerCompanyId)
     .single();
 
@@ -343,7 +361,7 @@ export async function POST(request: Request) {
 
     const invoice = invoiceAtual;
 
-    if (invoice.status === "success") {
+    if (isFinalInvoiceSuccess(invoice)) {
       return NextResponse.json(
         {
           success: true,
@@ -398,6 +416,21 @@ export async function POST(request: Request) {
       );
     }
 
+    if (isClienteDiretoPeloBody && invoice.partner_company_id !== null) {
+      await marcarInvoiceErro(
+        invoiceId,
+        "Inconsistência de emissão: a nota está vinculada a uma empresa."
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "A nota informada não pertence a um cliente direto.",
+        },
+        { status: 400 }
+      );
+    }
+
     const { data: clienteAtual, error: clientError } = await buscarCliente(clientIdParsed);
 
     if (clientError || !clienteAtual) {
@@ -414,24 +447,85 @@ export async function POST(request: Request) {
     }
 
     const cliente = clienteAtual;
-    const senhaEmissor = String(cliente.emissor_password || "").trim();
+    const senhaEmissor = String(
+      cliente.emissor_password || cliente.password || ""
+    ).trim();
     const clienteVinculadoEmpresa = Boolean(cliente.partner_company_id);
     const partnerCompanyIdEfetivo = clienteVinculadoEmpresa
       ? Number(cliente.partner_company_id)
       : null;
 
-    if (
-      !isClienteDiretoPeloBody &&
-      Number(cliente.partner_company_id) !== partnerCompanyIdParsed
-    ) {
-      await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Cliente não pertence à empresa informada.",
-        },
-        { status: 400 }
-      );
+    if (clienteVinculadoEmpresa) {
+      if (isClienteDiretoPeloBody) {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Cliente vinculado à empresa não pode emitir como cliente direto."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Este cliente está vinculado a uma empresa parceira.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (Number(cliente.partner_company_id) !== partnerCompanyIdParsed) {
+        await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Cliente não pertence à empresa informada.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (Number(invoice.partner_company_id) !== Number(cliente.partner_company_id)) {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Inconsistência entre nota e empresa do cliente."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "A nota não corresponde à empresa do cliente informado.",
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (!isClienteDiretoPeloBody) {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Cliente direto não pode emitir vinculado a empresa."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Este cliente não pertence a uma empresa parceira.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (invoice.partner_company_id !== null) {
+        await marcarInvoiceErro(
+          invoiceId,
+          "Inconsistência entre nota e cliente direto."
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message: "A nota não corresponde a um cliente direto.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (!cliente.is_active) {
@@ -466,22 +560,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // =========================================================
-    // REGRA DE NEGÓCIO
-    // =========================================================
-    // CLIENTE DE EMPRESA:
-    // - não valida plano individual
-    // - não valida subscription_status do cliente
-    // - valida somente situação da empresa + bloqueio individual
-    //
-    // CLIENTE DIRETO:
-    // - valida bloqueio
-    // - valida assinatura
-    // - valida plano
-    // - valida limite mensal
-    // - valida vencimento automático
-    // =========================================================
 
     if (clienteVinculadoEmpresa) {
       const { data: empresaAtual, error: empresaError } =

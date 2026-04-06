@@ -384,16 +384,17 @@ export default function HomePage() {
                   R$ 29,90
                 </div>
                 <p style={planDescriptionStyle}>
-                  Entrada com excelente custo-benefício para quem quer começar
-                  com organização.
+                  Ideal para quem quer começar com mais organização e controle no
+                  dia a dia fiscal.
                 </p>
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Até 10 notas por mês</div>
-                <div style={planItemStyle}>✔ Emissão individual</div>
-                <div style={planItemStyle}>✔ Histórico básico</div>
-                <div style={planItemStyle}>✔ PDF e XML organizados</div>
+                <div style={planItemStyle}>✔ 10 notas fiscais por mês</div>
+                <div style={planItemStyle}>✔ Emissão rápida e simplificada</div>
+                <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
+                <div style={planItemStyle}>✔ PDF e XML das notas geradas</div>
+                <div style={planItemStyle}>✔ Controle básico de faturamento</div>
               </div>
 
               <Link
@@ -430,19 +431,19 @@ export default function HomePage() {
                   R$ 59,90
                 </div>
                 <p style={planDescriptionStyle}>
-                  Para quem quer operar com mais liberdade, velocidade e escala
-                  no dia a dia fiscal.
+                  Para quem quer escalar a operação fiscal com mais controle,
+                  visibilidade e liberdade no dia a dia.
                 </p>
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Notas ilimitadas</div>
+                <div style={planItemStyle}>✔ Notas fiscais ilimitadas</div>
                 <div style={planItemStyle}>✔ Emissão automática completa</div>
-                <div style={planItemStyle}>✔ Dashboard operacional completo</div>
-                <div style={planItemStyle}>✔ Controle centralizado de clientes</div>
-                <div style={planItemStyle}>✔ Histórico completo de emissões</div>
+                <div style={planItemStyle}>✔ Dashboard completo</div>
+                <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
+                <div style={planItemStyle}>✔ Controle operacional</div>
+                <div style={planItemStyle}>✔ Suporte para contador</div>
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
-                <div style={planItemStyle}>✔ Contador</div>
               </div>
 
               <Link
@@ -481,20 +482,17 @@ export default function HomePage() {
                   R$ 30/mês + R$ 7 por cliente ativo
                 </div>
                 <p style={planDescriptionStyle}>
-                  Ideal para empresas parceiras e escritórios que operam com
-                  múltiplos clientes, cobrança escalável e emissão ilimitada.
+                  Perfeito para empresas parceiras e escritórios que gerenciam
+                  vários clientes com operação centralizada.
                 </p>
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Emissões ilimitadas</div>
-                <div style={planItemStyle}>✔ Múltiplos clientes</div>
+                <div style={planItemStyle}>✔ Emissão individual</div>
                 <div style={planItemStyle}>✔ Emissão em massa</div>
                 <div style={planItemStyle}>✔ Dashboard operacional</div>
-                <div style={planItemStyle}>✔ Estrutura escalável SaaS</div>
-                <div style={planItemStyle}>
-                  ✔ Base fixa + valor por cliente ativo
-                </div>
+                <div style={planItemStyle}>✔ Múltiplos clientes</div>
+                <div style={planItemStyle}>✔ Controle dos clientes</div>
               </div>
 
               <a

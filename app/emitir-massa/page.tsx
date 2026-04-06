@@ -779,10 +779,19 @@ export default function EmitirMassaPage() {
           const resultadoAutomacao: ApiEmitirResponse = await respostaAutomacao.json();
 
           if (!resultadoAutomacao.success) {
+            const mensagemErroApi = String(resultadoAutomacao.message || "").toLowerCase();
+
+            const erroDeBloqueio =
+              mensagemErroApi.includes("bloqueado") ||
+              mensagemErroApi.includes("pagamento") ||
+              mensagemErroApi.includes("plano") ||
+              mensagemErroApi.includes("assinatura") ||
+              mensagemErroApi.includes("limite");
+
             if (
               resultadoAutomacao.canceled ||
               canceladoRef.current ||
-              String(resultadoAutomacao.message || "").includes("Emissão cancelada pelo usuário.")
+              mensagemErroApi.includes("cancelada")
             ) {
               await marcarInvoiceComoCancelada(data.id);
 
@@ -791,6 +800,15 @@ export default function EmitirMassaPage() {
                 mensagemStatus: "Emissão cancelada pelo usuário.",
                 invoice_id: data.id,
               });
+            } else if (erroDeBloqueio) {
+              atualizarLinha(i, {
+                status: "error",
+                mensagemStatus: resultadoAutomacao.message || "Emissão bloqueada.",
+                invoice_id: data.id,
+              });
+
+              setErro("Emissão bloqueada por plano ou pagamento.");
+              break;
             } else {
               throw new Error(
                 resultadoAutomacao.invoice?.error_message ||
