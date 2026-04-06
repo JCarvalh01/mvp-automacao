@@ -494,7 +494,6 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Múltiplos clientes</div>
                 <div style={planItemStyle}>✔ Controle dos clientes</div>
               </div>
-
               <a
                 href={whatsappParceiroLink}
                 target="_blank"
@@ -628,7 +627,6 @@ export default function HomePage() {
               >
                 Assinar Full
               </Link>
-
               <a
                 href={whatsappParceiroLink}
                 target="_blank"
