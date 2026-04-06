@@ -47,9 +47,20 @@ const supabaseAdmin = createClient(
   }
 );
 
+const STALE_JOB_MINUTES = 8;
+const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
+
 function getFileExtension(filePath: string, fallback: string) {
   const ext = path.extname(filePath || "").replace(".", "").toLowerCase();
   return ext || fallback;
+}
+
+function getSenhaEmissor(cliente: ClientRow) {
+  return String(cliente.emissor_password || cliente.password || "").trim();
+}
+
+function getStaleJobIsoDate() {
+  return new Date(Date.now() - STALE_JOB_MINUTES * 60 * 1000).toISOString();
 }
 
 async function uploadFileToStorage(params: {
@@ -110,6 +121,112 @@ async function logJob(params: {
   } catch (err) {
     console.error("Erro ao salvar log do job:", err);
   }
+}
+
+async function atualizarInvoiceParaPending(invoiceId: number, mensagem?: string | null) {
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "pending",
+      error_message: mensagem || null,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function liberarJobsTravados() {
+  const staleIso = getStaleJobIsoDate();
+
+  const { data: jobsTravados, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .select("*")
+    .eq("status", "processing")
+    .eq("job_type", "emit_nfse")
+    .lt("locked_at", staleIso);
+
+  if (error) {
+    throw new Error(`Erro ao buscar jobs travados: ${error.message}`);
+  }
+
+  const lista = (jobsTravados as InvoiceJob[] | null) || [];
+
+  for (const job of lista) {
+    const excedeu =
+      Number(job.attempts || 0) >= Number(job.max_attempts || 3);
+
+    if (excedeu) {
+      await supabaseAdmin
+        .from("invoice_jobs")
+        .update({
+          status: "error",
+          finished_at: new Date().toISOString(),
+          locked_at: null,
+          error_message:
+            "Job travado em processamento por tempo excedido. Limite de tentativas atingido.",
+          result: {
+            lastError:
+              "Job travado em processamento por tempo excedido. Limite de tentativas atingido.",
+            staleRecovery: true,
+          },
+        })
+        .eq("id", job.id);
+
+      await atualizarInvoiceParaErro(
+        job.invoice_id,
+        "A emissão falhou após ficar travada em processamento."
+      );
+
+      await logJob({
+        jobId: job.id,
+        invoiceId: job.invoice_id,
+        level: "error",
+        message: "Job travado finalizado como erro por exceder tentativas.",
+        meta: {
+          attempts: job.attempts,
+          max_attempts: job.max_attempts,
+          locked_at: job.locked_at,
+        },
+      });
+
+      continue;
+    }
+
+    await supabaseAdmin
+      .from("invoice_jobs")
+      .update({
+        status: "queued",
+        locked_at: null,
+        started_at: null,
+        error_message: "Job recuperado automaticamente após travar em processing.",
+        result: {
+          staleRecovery: true,
+          message: "Job recuperado automaticamente após travar em processing.",
+        },
+      })
+      .eq("id", job.id);
+
+    await atualizarInvoiceParaPending(
+      job.invoice_id,
+      "Job recuperado automaticamente após travar em processamento."
+    );
+
+    await logJob({
+      jobId: job.id,
+      invoiceId: job.invoice_id,
+      level: "warning",
+      message: "Job travado recuperado automaticamente para a fila.",
+      meta: {
+        attempts: job.attempts,
+        max_attempts: job.max_attempts,
+        locked_at: job.locked_at,
+      },
+    });
+  }
+
+  return lista.length;
 }
 
 async function buscarProximoJob(): Promise<InvoiceJob | null> {
@@ -208,7 +325,10 @@ async function finalizarJobErro(job: InvoiceJob, mensagem: string, result: any =
   }
 }
 
-async function finalizarJobCancelado(jobId: number, mensagem = "Emissão cancelada pelo usuário.") {
+async function finalizarJobCancelado(
+  jobId: number,
+  mensagem = "Emissão cancelada pelo usuário."
+) {
   const agora = new Date().toISOString();
 
   const { error } = await supabaseAdmin
@@ -277,7 +397,8 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
   } catch (storageError: any) {
     console.error("Erro ao subir arquivos para o Storage:", storageError);
     storageWarning =
-      storageError?.message || "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
+      storageError?.message ||
+      "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
   } finally {
     await safeUnlink(pdfPathFinal);
     await safeUnlink(xmlPathFinal);
@@ -363,38 +484,54 @@ async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
   }
 
   const payload = job.payload || {};
-  const senhaEmissor = String(cliente.emissor_password || "").trim();
+  const senhaEmissor = getSenhaEmissor(cliente);
 
   if (!cliente.cnpj || !senhaEmissor) {
     throw new Error("Cliente sem dados fiscais completos para emissão.");
   }
 
-  const response = await fetch(`${WORKER_URL}/emitir`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      cnpjEmpresa: cliente.cnpj,
-      senhaEmpresa: senhaEmissor,
-      competencyDate: payload.competencyDate,
-      tomadorDocumento: payload.tomadorDocumento,
-      taxCode: payload.taxCode,
-      serviceCity: payload.serviceCity,
-      serviceValue: payload.serviceValue,
-      serviceDescription: payload.serviceDescription,
-      cancelKey: payload.cancelKey || String(job.invoice_id),
-    }),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, WORKER_TIMEOUT_MS);
 
-  const resultado = await response.json().catch(() => null);
+  try {
+    const response = await fetch(`${WORKER_URL}/emitir`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        cnpjEmpresa: cliente.cnpj,
+        senhaEmpresa: senhaEmissor,
+        competencyDate: payload.competencyDate,
+        tomadorDocumento: payload.tomadorDocumento,
+        taxCode: payload.taxCode,
+        serviceCity: payload.serviceCity,
+        serviceValue: payload.serviceValue,
+        serviceDescription: payload.serviceDescription,
+        cancelKey: payload.cancelKey || String(job.invoice_id),
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(resultado?.message || "Erro ao chamar worker.");
+    const resultado = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(resultado?.message || "Erro ao chamar worker.");
+    }
+
+    return resultado;
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Tempo limite excedido ao aguardar o worker de emissão.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return resultado;
 }
 
 async function processarJob(job: InvoiceJob) {
@@ -426,12 +563,13 @@ async function processarJob(job: InvoiceJob) {
   }
 
   const cliente = await buscarCliente(job.client_id);
+  const senhaEmissor = getSenhaEmissor(cliente);
 
   if (!cliente.is_active) {
     throw new Error("Cliente inativo.");
   }
 
-  if (!cliente.cnpj || !String(cliente.emissor_password || "").trim()) {
+  if (!cliente.cnpj || !senhaEmissor) {
     throw new Error("Cliente sem dados fiscais completos para emissão.");
   }
 
@@ -508,12 +646,15 @@ async function processarJob(job: InvoiceJob) {
 
 export async function POST(_request: NextRequest) {
   try {
+    const recuperados = await liberarJobsTravados();
+
     const job = await buscarProximoJob();
 
     if (!job) {
       return NextResponse.json({
         success: true,
         processed: false,
+        recovered_stale_jobs: recuperados,
         message: "Nenhum job pendente na fila.",
       });
     }
@@ -524,6 +665,7 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({
         success: true,
         processed: false,
+        recovered_stale_jobs: recuperados,
         message: "Job já foi capturado por outro processo.",
       });
     }
@@ -550,6 +692,7 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({
         ...resultado,
         processed: true,
+        recovered_stale_jobs: recuperados,
       });
     } catch (error: any) {
       const mensagemErro = String(error?.message || "Erro ao processar job.");
@@ -583,6 +726,7 @@ export async function POST(_request: NextRequest) {
           success: false,
           processed: true,
           canceled: true,
+          recovered_stale_jobs: recuperados,
           message: "Emissão cancelada pelo usuário.",
         });
       }
@@ -593,6 +737,11 @@ export async function POST(_request: NextRequest) {
 
       if (excedeu) {
         await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
+      } else {
+        await atualizarInvoiceParaPending(
+          jobComTentativa.invoice_id,
+          "Tentando novamente a emissão após falha temporária."
+        );
       }
 
       await finalizarJobErro(jobComTentativa, mensagemErro, {
@@ -604,6 +753,7 @@ export async function POST(_request: NextRequest) {
         success: false,
         processed: true,
         willRetry: !excedeu,
+        recovered_stale_jobs: recuperados,
         message: mensagemErro,
       });
     }
