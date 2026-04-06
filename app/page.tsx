@@ -442,7 +442,7 @@ export default function HomePage() {
                 <div style={planItemStyle}>✔ Dashboard completo</div>
                 <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
                 <div style={planItemStyle}>✔ Controle operacional</div>
-                <div style={planItemStyle}>✔ Suporte para contador</div>
+                <div style={planItemStyle}>✔ Suporte contador</div>
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
               </div>
 
