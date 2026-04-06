@@ -737,7 +737,7 @@ export async function POST(request: Request) {
           .eq("id", invoiceId as number)
           .single();
 
-        if (data?.status === "processing") {
+        if (data?.status === "processing" || data?.status === "queued") {
           await marcarInvoiceErro(
             invoiceId as number,
             "Timeout na automação (processamento não finalizado)."
@@ -847,17 +847,21 @@ export async function POST(request: Request) {
         process.env.APP_URL ||
         new URL(request.url).origin;
 
-      fetch(`${baseUrl}/api/jobs/process`, {
+      console.log("🔄 Processando job imediatamente...");
+
+      const processResponse = await fetch(`${baseUrl}/api/jobs/process`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         cache: "no-store",
-      }).catch((err) => {
-        console.error("Erro ao disparar processamento imediato do job:", err);
       });
+
+      const processResult = await processResponse.json().catch(() => null);
+
+      console.log("✅ Resultado processamento:", processResult);
     } catch (err) {
-      console.error("Erro ao montar disparo imediato do job:", err);
+      console.error("Erro ao processar job imediatamente:", err);
     }
 
     return NextResponse.json(
