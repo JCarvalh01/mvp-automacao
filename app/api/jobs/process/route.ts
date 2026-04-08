@@ -34,6 +34,16 @@ type ClientRow = {
   is_active: boolean | null;
 };
 
+type WorkerResult = {
+  success: boolean;
+  message?: string | null;
+  nfseKey?: string | null;
+  pdfUrl?: string | null;
+  xmlUrl?: string | null;
+  pdfBase64?: string | null;
+  xmlBase64?: string | null;
+};
+
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -166,10 +176,10 @@ async function atualizarInvoiceParaCancelada(
   }
 }
 
-async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
+async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResult) {
   const nfseKeyFinal = result?.nfseKey || null;
-  const pdfBase64: string | null = result?.pdfBase64 || null;
-  const xmlBase64: string | null = result?.xmlBase64 || null;
+  const pdfBase64 = result?.pdfBase64 || null;
+  const xmlBase64 = result?.xmlBase64 || null;
 
   let pdfUrlFinal: string | null = null;
   let xmlUrlFinal: string | null = null;
@@ -492,7 +502,15 @@ async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
       signal: controller.signal,
     });
 
-    const resultado = await response.json().catch(() => null);
+    const resultado = (await response.json().catch(() => null)) as WorkerResult | null;
+
+    console.log("RESULTADO WORKER:", {
+      success: resultado?.success,
+      message: resultado?.message,
+      nfseKey: resultado?.nfseKey,
+      hasPdfBase64: Boolean(resultado?.pdfBase64),
+      hasXmlBase64: Boolean(resultado?.xmlBase64),
+    });
 
     if (!response.ok) {
       throw new Error(resultado?.message || "Erro ao chamar worker.");
