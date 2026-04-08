@@ -58,6 +58,7 @@ const supabaseAdmin = createClient(
 const STALE_JOB_MINUTES = 8;
 const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
 const STORAGE_BUCKET = "nfse-files";
+const NFSE_PORTAL_BASE_URL = "https://www.nfse.gov.br";
 
 function getSenhaEmissor(cliente: ClientRow) {
   return String(cliente.emissor_password || cliente.password || "").trim();
@@ -65,6 +66,21 @@ function getSenhaEmissor(cliente: ClientRow) {
 
 function getStaleJobIsoDate() {
   return new Date(Date.now() - STALE_JOB_MINUTES * 60 * 1000).toISOString();
+}
+
+function normalizarUrlArquivo(valor: string | null | undefined) {
+  const url = String(valor || "").trim();
+  if (!url) return null;
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  if (url.startsWith("/")) {
+    return `${NFSE_PORTAL_BASE_URL}${url}`;
+  }
+
+  return null;
 }
 
 async function uploadBase64ToStorage(params: {
@@ -182,18 +198,21 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
   const pdfUrlRecebida = String(result?.pdfUrl || "").trim();
   const xmlUrlRecebida = String(result?.xmlUrl || "").trim();
 
-  const pdfUrlEhPublica =
-    pdfUrlRecebida.startsWith("http://") || pdfUrlRecebida.startsWith("https://");
-
-  const xmlUrlEhPublica =
-    xmlUrlRecebida.startsWith("http://") || xmlUrlRecebida.startsWith("https://");
-
-  let pdfUrlFinal: string | null = pdfUrlEhPublica ? pdfUrlRecebida : null;
-  let xmlUrlFinal: string | null = xmlUrlEhPublica ? xmlUrlRecebida : null;
+  let pdfUrlFinal: string | null = null;
+  let xmlUrlFinal: string | null = null;
   let storageWarning: string | null = null;
 
+  console.log("ATUALIZAR INVOICE PARA SUCESSO:", {
+    invoiceId,
+    nfseKeyFinal,
+    hasPdfBase64: Boolean(result?.pdfBase64),
+    hasXmlBase64: Boolean(result?.xmlBase64),
+    pdfUrlRecebida,
+    xmlUrlRecebida,
+  });
+
   try {
-    if (!pdfUrlFinal && result?.pdfBase64) {
+    if (result?.pdfBase64) {
       pdfUrlFinal = await uploadBase64ToStorage({
         base64: result.pdfBase64,
         bucket: STORAGE_BUCKET,
@@ -202,7 +221,7 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
       });
     }
 
-    if (!xmlUrlFinal && result?.xmlBase64) {
+    if (result?.xmlBase64) {
       xmlUrlFinal = await uploadBase64ToStorage({
         base64: result.xmlBase64,
         bucket: STORAGE_BUCKET,
@@ -210,8 +229,25 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
         contentType: "application/xml",
       });
     }
+
+    if (!pdfUrlFinal) {
+      pdfUrlFinal = normalizarUrlArquivo(pdfUrlRecebida);
+    }
+
+    if (!xmlUrlFinal) {
+      xmlUrlFinal = normalizarUrlArquivo(xmlUrlRecebida);
+    }
+
+    if (!pdfUrlFinal || !xmlUrlFinal) {
+      storageWarning =
+        "Nota emitida, mas PDF/XML não foram salvos no Storage. URLs do worker vieram vazias ou incompletas.";
+    }
   } catch (storageError: any) {
     console.error("Erro ao subir arquivos para o Storage:", storageError);
+
+    pdfUrlFinal = pdfUrlFinal || normalizarUrlArquivo(pdfUrlRecebida);
+    xmlUrlFinal = xmlUrlFinal || normalizarUrlArquivo(xmlUrlRecebida);
+
     storageWarning =
       storageError?.message ||
       "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
