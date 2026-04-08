@@ -47,6 +47,7 @@ const supabaseAdmin = createClient(
 
 const STALE_JOB_MINUTES = 8;
 const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
+const STORAGE_BUCKET = "nfse-files";
 
 function getSenhaEmissor(cliente: ClientRow) {
   return String(cliente.emissor_password || cliente.password || "").trim();
@@ -118,6 +119,110 @@ async function atualizarInvoiceParaPending(invoiceId: number, mensagem?: string 
   if (error) {
     throw new Error(error.message);
   }
+}
+
+async function atualizarInvoiceParaProcessando(invoiceId: number) {
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "processing",
+      error_message: null,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function atualizarInvoiceParaErro(invoiceId: number, mensagem: string) {
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "error",
+      error_message: mensagem,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function atualizarInvoiceParaCancelada(
+  invoiceId: number,
+  mensagem = "Emissão cancelada pelo usuário."
+) {
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "canceled",
+      error_message: mensagem,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
+  const nfseKeyFinal = result?.nfseKey || null;
+  const pdfBase64: string | null = result?.pdfBase64 || null;
+  const xmlBase64: string | null = result?.xmlBase64 || null;
+
+  let pdfUrlFinal: string | null = null;
+  let xmlUrlFinal: string | null = null;
+  let storageWarning: string | null = null;
+
+  try {
+    if (pdfBase64) {
+      pdfUrlFinal = await uploadBase64ToStorage({
+        base64: pdfBase64,
+        bucket: STORAGE_BUCKET,
+        destinationPath: `invoices/${invoiceId}/danfse-${nfseKeyFinal || invoiceId}.pdf`,
+        contentType: "application/pdf",
+      });
+    }
+
+    if (xmlBase64) {
+      xmlUrlFinal = await uploadBase64ToStorage({
+        base64: xmlBase64,
+        bucket: STORAGE_BUCKET,
+        destinationPath: `invoices/${invoiceId}/xml-${nfseKeyFinal || invoiceId}.xml`,
+        contentType: "application/xml",
+      });
+    }
+  } catch (storageError: any) {
+    console.error("Erro ao subir arquivos para o Storage:", storageError);
+    storageWarning =
+      storageError?.message ||
+      "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
+  }
+
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "success",
+      error_message: storageWarning,
+      nfse_key: nfseKeyFinal,
+      pdf_url: pdfUrlFinal,
+      xml_url: xmlUrlFinal,
+      pdf_path: null,
+      xml_path: null,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    nfseKey: nfseKeyFinal,
+    pdfUrl: pdfUrlFinal,
+    xmlUrl: xmlUrlFinal,
+    warning: storageWarning,
+  };
 }
 
 async function liberarJobsTravados() {
@@ -324,117 +429,6 @@ async function finalizarJobCancelado(
       result: { canceled: true, message: mensagem },
     })
     .eq("id", jobId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function atualizarInvoiceParaProcessando(invoiceId: number) {
-  const { error } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      status: "processing",
-      error_message: null,
-    })
-    .eq("id", invoiceId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
-  const bucketName = "nfse-files";
-
-  const nfseKeyFinal = result?.nfseKey || null;
-  const pdfBase64: string | null = result?.pdfBase64 || null;
-  const xmlBase64: string | null = result?.xmlBase64 || null;
-
-  let pdfUrlFinal: string | null = null;
-  let xmlUrlFinal: string | null = null;
-  let storageWarning: string | null = null;
-
-  const pdfDestinationPath = `invoices/${invoiceId}/danfse-${invoiceId}-${Date.now()}.pdf`;
-  const xmlDestinationPath = `invoices/${invoiceId}/xml-${invoiceId}-${Date.now()}.xml`;
-
-  try {
-    if (pdfBase64) {
-      pdfUrlFinal = await uploadBase64ToStorage({
-        base64: pdfBase64,
-        bucket: bucketName,
-        destinationPath: pdfDestinationPath,
-        contentType: "application/pdf",
-      });
-    }
-
-    if (xmlBase64) {
-      xmlUrlFinal = await uploadBase64ToStorage({
-        base64: xmlBase64,
-        bucket: bucketName,
-        destinationPath: xmlDestinationPath,
-        contentType: "application/xml",
-      });
-    }
-  } catch (storageError: any) {
-    console.error("Erro ao subir arquivos para o Storage:", storageError);
-    storageWarning =
-      storageError?.message ||
-      "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
-  }
-
-  const { error } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      status: "success",
-      error_message: storageWarning,
-      nfse_key: nfseKeyFinal,
-      pdf_url: pdfUrlFinal,
-      xml_url: xmlUrlFinal,
-      pdf_path: null,
-      xml_path: null,
-    })
-    .eq("id", invoiceId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return {
-    nfseKey: nfseKeyFinal,
-    pdfUrl: pdfUrlFinal,
-    xmlUrl: xmlUrlFinal,
-    pdfPath: null,
-    xmlPath: null,
-    warning: storageWarning,
-  };
-}
-
-async function atualizarInvoiceParaErro(invoiceId: number, mensagem: string) {
-  const { error } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      status: "error",
-      error_message: mensagem,
-    })
-    .eq("id", invoiceId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-async function atualizarInvoiceParaCancelada(
-  invoiceId: number,
-  mensagem = "Emissão cancelada pelo usuário."
-) {
-  const { error } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      status: "canceled",
-      error_message: mensagem,
-    })
-    .eq("id", invoiceId);
 
   if (error) {
     throw new Error(error.message);
