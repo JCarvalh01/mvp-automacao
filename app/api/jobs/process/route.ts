@@ -178,26 +178,24 @@ async function atualizarInvoiceParaCancelada(
 
 async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResult) {
   const nfseKeyFinal = result?.nfseKey || null;
-  const pdfBase64 = result?.pdfBase64 || null;
-  const xmlBase64 = result?.xmlBase64 || null;
 
-  let pdfUrlFinal: string | null = null;
-  let xmlUrlFinal: string | null = null;
+  let pdfUrlFinal: string | null = result?.pdfUrl || null;
+  let xmlUrlFinal: string | null = result?.xmlUrl || null;
   let storageWarning: string | null = null;
 
   try {
-    if (pdfBase64) {
+    if (!pdfUrlFinal && result?.pdfBase64) {
       pdfUrlFinal = await uploadBase64ToStorage({
-        base64: pdfBase64,
+        base64: result.pdfBase64,
         bucket: STORAGE_BUCKET,
         destinationPath: `invoices/${invoiceId}/danfse-${nfseKeyFinal || invoiceId}.pdf`,
         contentType: "application/pdf",
       });
     }
 
-    if (xmlBase64) {
+    if (!xmlUrlFinal && result?.xmlBase64) {
       xmlUrlFinal = await uploadBase64ToStorage({
-        base64: xmlBase64,
+        base64: result.xmlBase64,
         bucket: STORAGE_BUCKET,
         destinationPath: `invoices/${invoiceId}/xml-${nfseKeyFinal || invoiceId}.xml`,
         contentType: "application/xml",
@@ -510,6 +508,8 @@ async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
       nfseKey: resultado?.nfseKey,
       hasPdfBase64: Boolean(resultado?.pdfBase64),
       hasXmlBase64: Boolean(resultado?.xmlBase64),
+      pdfUrl: resultado?.pdfUrl || null,
+      xmlUrl: resultado?.xmlUrl || null,
     });
 
     if (!response.ok) {
