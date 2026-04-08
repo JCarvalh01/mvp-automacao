@@ -179,8 +179,17 @@ async function atualizarInvoiceParaCancelada(
 async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResult) {
   const nfseKeyFinal = result?.nfseKey || null;
 
-  let pdfUrlFinal: string | null = result?.pdfUrl || null;
-  let xmlUrlFinal: string | null = result?.xmlUrl || null;
+  const pdfUrlRecebida = String(result?.pdfUrl || "").trim();
+  const xmlUrlRecebida = String(result?.xmlUrl || "").trim();
+
+  const pdfUrlEhPublica =
+    pdfUrlRecebida.startsWith("http://") || pdfUrlRecebida.startsWith("https://");
+
+  const xmlUrlEhPublica =
+    xmlUrlRecebida.startsWith("http://") || xmlUrlRecebida.startsWith("https://");
+
+  let pdfUrlFinal: string | null = pdfUrlEhPublica ? pdfUrlRecebida : null;
+  let xmlUrlFinal: string | null = xmlUrlEhPublica ? xmlUrlRecebida : null;
   let storageWarning: string | null = null;
 
   try {
