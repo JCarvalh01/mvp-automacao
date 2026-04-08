@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import fs from "fs/promises";
-import path from "path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,11 +48,6 @@ const supabaseAdmin = createClient(
 const STALE_JOB_MINUTES = 8;
 const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
 
-function getFileExtension(filePath: string, fallback: string) {
-  const ext = path.extname(filePath || "").replace(".", "").toLowerCase();
-  return ext || fallback;
-}
-
 function getSenhaEmissor(cliente: ClientRow) {
   return String(cliente.emissor_password || cliente.password || "").trim();
 }
@@ -63,17 +56,17 @@ function getStaleJobIsoDate() {
   return new Date(Date.now() - STALE_JOB_MINUTES * 60 * 1000).toISOString();
 }
 
-async function uploadFileToStorage(params: {
-  localPath: string | null | undefined;
+async function uploadBase64ToStorage(params: {
+  base64: string | null | undefined;
   bucket: string;
   destinationPath: string;
   contentType: string;
 }) {
-  const { localPath, bucket, destinationPath, contentType } = params;
+  const { base64, bucket, destinationPath, contentType } = params;
 
-  if (!localPath) return null;
+  if (!base64) return null;
 
-  const fileBuffer = await fs.readFile(localPath);
+  const fileBuffer = Buffer.from(base64, "base64");
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(bucket)
@@ -91,16 +84,6 @@ async function uploadFileToStorage(params: {
     .getPublicUrl(destinationPath);
 
   return publicData?.publicUrl || null;
-}
-
-async function safeUnlink(filePath?: string | null) {
-  if (!filePath) return;
-
-  try {
-    await fs.unlink(filePath);
-  } catch {
-    // ignora limpeza local
-  }
 }
 
 async function logJob(params: {
@@ -365,32 +348,31 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
   const bucketName = "nfse-files";
 
   const nfseKeyFinal = result?.nfseKey || null;
-  const pdfPathFinal: string | null = result?.pdfPath || null;
-  const xmlPathFinal: string | null = result?.xmlPath || null;
+  const pdfBase64: string | null = result?.pdfBase64 || null;
+  const xmlBase64: string | null = result?.xmlBase64 || null;
 
   let pdfUrlFinal: string | null = null;
   let xmlUrlFinal: string | null = null;
   let storageWarning: string | null = null;
 
-  try {
-    if (pdfPathFinal) {
-      const pdfExt = getFileExtension(pdfPathFinal, "pdf");
+  const pdfDestinationPath = `invoices/${invoiceId}/danfse-${invoiceId}-${Date.now()}.pdf`;
+  const xmlDestinationPath = `invoices/${invoiceId}/xml-${invoiceId}-${Date.now()}.xml`;
 
-      pdfUrlFinal = await uploadFileToStorage({
-        localPath: pdfPathFinal,
+  try {
+    if (pdfBase64) {
+      pdfUrlFinal = await uploadBase64ToStorage({
+        base64: pdfBase64,
         bucket: bucketName,
-        destinationPath: `invoices/${invoiceId}/danfse-${invoiceId}-${Date.now()}.${pdfExt}`,
+        destinationPath: pdfDestinationPath,
         contentType: "application/pdf",
       });
     }
 
-    if (xmlPathFinal) {
-      const xmlExt = getFileExtension(xmlPathFinal, "xml");
-
-      xmlUrlFinal = await uploadFileToStorage({
-        localPath: xmlPathFinal,
+    if (xmlBase64) {
+      xmlUrlFinal = await uploadBase64ToStorage({
+        base64: xmlBase64,
         bucket: bucketName,
-        destinationPath: `invoices/${invoiceId}/xml-${invoiceId}-${Date.now()}.${xmlExt}`,
+        destinationPath: xmlDestinationPath,
         contentType: "application/xml",
       });
     }
@@ -399,9 +381,6 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
     storageWarning =
       storageError?.message ||
       "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
-  } finally {
-    await safeUnlink(pdfPathFinal);
-    await safeUnlink(xmlPathFinal);
   }
 
   const { error } = await supabaseAdmin
@@ -412,8 +391,8 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
       nfse_key: nfseKeyFinal,
       pdf_url: pdfUrlFinal,
       xml_url: xmlUrlFinal,
-      pdf_path: pdfPathFinal,
-      xml_path: xmlPathFinal,
+      pdf_path: null,
+      xml_path: null,
     })
     .eq("id", invoiceId);
 
@@ -425,8 +404,8 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: any) {
     nfseKey: nfseKeyFinal,
     pdfUrl: pdfUrlFinal,
     xmlUrl: xmlUrlFinal,
-    pdfPath: pdfPathFinal,
-    xmlPath: xmlPathFinal,
+    pdfPath: null,
+    xmlPath: null,
     warning: storageWarning,
   };
 }
@@ -500,6 +479,9 @@ async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "bypass-tunnel-reminder": "1",
+        "User-Agent": "mvp-automacao-worker-client",
+        "Accept": "application/json",
       },
       body: JSON.stringify({
         cnpjEmpresa: cliente.cnpj,
@@ -622,8 +604,6 @@ async function processarJob(job: InvoiceJob) {
       nfseKey: storageResult.nfseKey,
       pdfUrl: storageResult.pdfUrl,
       xmlUrl: storageResult.xmlUrl,
-      pdfPath: storageResult.pdfPath,
-      xmlPath: storageResult.xmlPath,
       warning: storageResult.warning,
     },
   });
@@ -648,115 +628,147 @@ export async function POST(_request: NextRequest) {
   try {
     const recuperados = await liberarJobsTravados();
 
-    const job = await buscarProximoJob();
+    let processedCount = 0;
+    let successCount = 0;
+    let errorCount = 0;
+    let canceledCount = 0;
+    const resultados: any[] = [];
 
-    if (!job) {
-      return NextResponse.json({
-        success: true,
-        processed: false,
-        recovered_stale_jobs: recuperados,
-        message: "Nenhum job pendente na fila.",
-      });
-    }
+    while (true) {
+      const job = await buscarProximoJob();
 
-    const travado = await travarJob(job.id);
+      if (!job) {
+        break;
+      }
 
-    if (!travado) {
-      return NextResponse.json({
-        success: true,
-        processed: false,
-        recovered_stale_jobs: recuperados,
-        message: "Job já foi capturado por outro processo.",
-      });
-    }
+      const travado = await travarJob(job.id);
 
-    const agora = new Date().toISOString();
+      if (!travado) {
+        continue;
+      }
 
-    const jobAtualizado: InvoiceJob = {
-      ...job,
-      status: "processing",
-      locked_at: agora,
-      started_at: job.started_at || agora,
-    };
+      const agora = new Date().toISOString();
 
-    const attemptsAtual = await incrementarTentativa(jobAtualizado);
+      const jobAtualizado: InvoiceJob = {
+        ...job,
+        status: "processing",
+        locked_at: agora,
+        started_at: job.started_at || agora,
+      };
 
-    const jobComTentativa: InvoiceJob = {
-      ...jobAtualizado,
-      attempts: attemptsAtual,
-    };
+      const attemptsAtual = await incrementarTentativa(jobAtualizado);
 
-    try {
-      const resultado = await processarJob(jobComTentativa);
+      const jobComTentativa: InvoiceJob = {
+        ...jobAtualizado,
+        attempts: attemptsAtual,
+      };
 
-      return NextResponse.json({
-        ...resultado,
-        processed: true,
-        recovered_stale_jobs: recuperados,
-      });
-    } catch (error: any) {
-      const mensagemErro = String(error?.message || "Erro ao processar job.");
+      try {
+        const resultado = await processarJob(jobComTentativa);
 
-      await logJob({
-        jobId: jobComTentativa.id,
-        invoiceId: jobComTentativa.invoice_id,
-        level: "error",
-        message: "Erro ao processar job.",
-        meta: {
-          error: mensagemErro,
+        processedCount += 1;
+
+        if (resultado?.canceled) {
+          canceledCount += 1;
+        } else if (resultado?.success) {
+          successCount += 1;
+        }
+
+        resultados.push({
+          jobId: jobComTentativa.id,
+          invoiceId: jobComTentativa.invoice_id,
+          success: Boolean(resultado?.success),
+          canceled: Boolean(resultado?.canceled),
+          message: resultado?.message || null,
+        });
+      } catch (error: any) {
+        const mensagemErro = String(error?.message || "Erro ao processar job.");
+
+        await logJob({
+          jobId: jobComTentativa.id,
+          invoiceId: jobComTentativa.invoice_id,
+          level: "error",
+          message: "Erro ao processar job.",
+          meta: {
+            error: mensagemErro,
+            attempt: jobComTentativa.attempts,
+          },
+        });
+
+        if (
+          mensagemErro.includes("EMISSAO_CANCELADA_USUARIO") ||
+          mensagemErro.includes("cancelada pelo usuário")
+        ) {
+          await atualizarInvoiceParaCancelada(
+            jobComTentativa.invoice_id,
+            "Emissão cancelada pelo usuário."
+          );
+
+          await finalizarJobCancelado(
+            jobComTentativa.id,
+            "Emissão cancelada pelo usuário."
+          );
+
+          processedCount += 1;
+          canceledCount += 1;
+
+          resultados.push({
+            jobId: jobComTentativa.id,
+            invoiceId: jobComTentativa.invoice_id,
+            success: false,
+            canceled: true,
+            message: "Emissão cancelada pelo usuário.",
+          });
+
+          continue;
+        }
+
+        const excedeu =
+          Number(jobComTentativa.attempts || 0) >=
+          Number(jobComTentativa.max_attempts || 3);
+
+        if (excedeu) {
+          await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
+        } else {
+          await atualizarInvoiceParaPending(
+            jobComTentativa.invoice_id,
+            "Tentando novamente a emissão após falha temporária."
+          );
+        }
+
+        await finalizarJobErro(jobComTentativa, mensagemErro, {
+          lastError: mensagemErro,
           attempt: jobComTentativa.attempts,
-        },
-      });
+        });
 
-      if (
-        mensagemErro.includes("EMISSAO_CANCELADA_USUARIO") ||
-        mensagemErro.includes("cancelada pelo usuário")
-      ) {
-        await atualizarInvoiceParaCancelada(
-          jobComTentativa.invoice_id,
-          "Emissão cancelada pelo usuário."
-        );
+        processedCount += 1;
+        errorCount += 1;
 
-        await finalizarJobCancelado(
-          jobComTentativa.id,
-          "Emissão cancelada pelo usuário."
-        );
-
-        return NextResponse.json({
+        resultados.push({
+          jobId: jobComTentativa.id,
+          invoiceId: jobComTentativa.invoice_id,
           success: false,
-          processed: true,
-          canceled: true,
-          recovered_stale_jobs: recuperados,
-          message: "Emissão cancelada pelo usuário.",
+          canceled: false,
+          willRetry: !excedeu,
+          message: mensagemErro,
         });
       }
-
-      const excedeu =
-        Number(jobComTentativa.attempts || 0) >=
-        Number(jobComTentativa.max_attempts || 3);
-
-      if (excedeu) {
-        await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
-      } else {
-        await atualizarInvoiceParaPending(
-          jobComTentativa.invoice_id,
-          "Tentando novamente a emissão após falha temporária."
-        );
-      }
-
-      await finalizarJobErro(jobComTentativa, mensagemErro, {
-        lastError: mensagemErro,
-        attempt: jobComTentativa.attempts,
-      });
-
-      return NextResponse.json({
-        success: false,
-        processed: true,
-        willRetry: !excedeu,
-        recovered_stale_jobs: recuperados,
-        message: mensagemErro,
-      });
     }
+
+    return NextResponse.json({
+      success: true,
+      processed: processedCount > 0,
+      processedCount,
+      successCount,
+      errorCount,
+      canceledCount,
+      recovered_stale_jobs: recuperados,
+      resultados,
+      message:
+        processedCount > 0
+          ? "Fila processada completamente."
+          : "Nenhum job pendente na fila.",
+    });
   } catch (error: any) {
     return NextResponse.json(
       {

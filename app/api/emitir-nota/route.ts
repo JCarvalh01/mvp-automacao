@@ -345,6 +345,18 @@ export async function POST(request: Request) {
       );
     }
 
+    const workerUrl = String(process.env.NFSE_WORKER_URL || "").trim();
+
+    if (!workerUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "NFSE_WORKER_URL não configurado no ambiente.",
+        },
+        { status: 500 }
+      );
+    }
+
     const { data: invoiceAtual, error: invoiceError } = await buscarInvoice(invoiceId);
 
     if (invoiceError || !invoiceAtual) {
@@ -820,6 +832,7 @@ export async function POST(request: Request) {
         isBlocked: Boolean(cliente.is_blocked),
         partnerCompanyId: cliente.partner_company_id,
         clienteVinculadoEmpresa,
+        workerUrl,
       },
     });
 
@@ -839,6 +852,7 @@ export async function POST(request: Request) {
       isBlocked: Boolean(cliente.is_blocked),
       partnerCompanyIdCliente: cliente.partner_company_id,
       clienteVinculadoEmpresa,
+      workerUrl,
     });
 
     try {
@@ -848,6 +862,7 @@ export async function POST(request: Request) {
         new URL(request.url).origin;
 
       console.log("🔄 Processando job imediatamente...");
+      console.log("🔗 Worker configurado:", workerUrl);
 
       const processResponse = await fetch(`${baseUrl}/api/jobs/process`, {
         method: "POST",
