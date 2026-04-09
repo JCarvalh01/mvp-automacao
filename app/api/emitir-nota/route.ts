@@ -258,6 +258,19 @@ async function buscarJobAtivo(invoiceId: number) {
   };
 }
 
+function montarRetornoInvoice(invoice: InvoiceRow | null | undefined, fallbackStatus?: string | null) {
+  return {
+    id: invoice?.id || null,
+    status: invoice?.status || fallbackStatus || null,
+    nfse_key: invoice?.nfse_key || null,
+    pdf_url: invoice?.pdf_url || null,
+    xml_url: invoice?.xml_url || null,
+    pdf_path: invoice?.pdf_path || null,
+    xml_path: invoice?.xml_path || null,
+    error_message: invoice?.error_message || null,
+  };
+}
+
 async function marcarInvoicePending(invoiceId: number) {
   return await supabaseAdmin
     .from("invoices")
@@ -701,22 +714,18 @@ export async function POST(request: Request) {
     const { data: jobAtivo } = await buscarJobAtivo(invoiceId);
 
     if (jobAtivo) {
+      const { data: invoiceRecarregada } = await buscarInvoice(invoiceId);
+
       return NextResponse.json(
         {
           success: true,
           message: "A emissão desta nota já está em processamento.",
           jobId: jobAtivo.id,
-          status: jobAtivo.status,
-          invoice: {
-            id: invoice.id,
-            status: invoice.status || "pending",
-            nfse_key: invoice.nfse_key,
-            pdf_url: invoice.pdf_url,
-            xml_url: invoice.xml_url,
-            pdf_path: invoice.pdf_path,
-            xml_path: invoice.xml_path,
-            error_message: invoice.error_message,
-          },
+          status: jobAtivo.status || invoiceRecarregada?.status || "pending",
+          invoice: montarRetornoInvoice(
+            invoiceRecarregada || invoice,
+            jobAtivo.status || "pending"
+          ),
         },
         { status: 200 }
       );
@@ -874,6 +883,7 @@ export async function POST(request: Request) {
       console.log("✅ Resultado processamento:", processResult);
 
       const { data: invoiceAtualizada } = await buscarInvoice(invoiceId);
+      const { data: jobAtivoDepoisProcesso } = await buscarJobAtivo(invoiceId);
 
       if (isFinalInvoiceSuccess(invoiceAtualizada)) {
         return NextResponse.json(
@@ -882,26 +892,93 @@ export async function POST(request: Request) {
             message: "Nota emitida com sucesso.",
             jobId: Number(novoJob.id),
             status: "success",
-            invoice: {
-              id: invoiceAtualizada!.id,
-              status: invoiceAtualizada!.status,
-              nfse_key: invoiceAtualizada!.nfse_key,
-              pdf_url: invoiceAtualizada!.pdf_url,
-              xml_url: invoiceAtualizada!.xml_url,
-              pdf_path: invoiceAtualizada!.pdf_path,
-              xml_path: invoiceAtualizada!.xml_path,
-              error_message: invoiceAtualizada!.error_message,
-            },
+            invoice: montarRetornoInvoice(invoiceAtualizada, "success"),
           },
           { status: 200 }
+        );
+      }
+
+      if (invoiceAtualizada?.status === "canceled") {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Emissão cancelada.",
+            jobId: Number(novoJob.id),
+            status: "canceled",
+            invoice: montarRetornoInvoice(invoiceAtualizada, "canceled"),
+          },
+          { status: 200 }
+        );
+      }
+
+      if (invoiceAtualizada?.status === "error" && !jobAtivoDepoisProcesso) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              invoiceAtualizada.error_message || "Erro ao iniciar a emissão da nota.",
+            jobId: Number(novoJob.id),
+            status: "error",
+            invoice: montarRetornoInvoice(invoiceAtualizada, "error"),
+          },
+          { status: 500 }
         );
       }
 
       if (processResult?.success === false) {
         console.error("❌ /api/jobs/process retornou erro:", processResult);
       }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Emissão iniciada com sucesso.",
+          jobId: Number(novoJob.id),
+          status:
+            jobAtivoDepoisProcesso?.status ||
+            invoiceAtualizada?.status ||
+            "queued",
+          invoice: montarRetornoInvoice(
+            invoiceAtualizada || invoice,
+            jobAtivoDepoisProcesso?.status || "pending"
+          ),
+        },
+        { status: 200 }
+      );
     } catch (err) {
       console.error("Erro ao processar job imediatamente:", err);
+
+      const { data: invoiceDepoisErro } = await buscarInvoice(invoiceId);
+      const { data: jobAtivoDepoisErro } = await buscarJobAtivo(invoiceId);
+
+      if (isFinalInvoiceSuccess(invoiceDepoisErro)) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Nota emitida com sucesso.",
+            jobId: Number(novoJob.id),
+            status: "success",
+            invoice: montarRetornoInvoice(invoiceDepoisErro, "success"),
+          },
+          { status: 200 }
+        );
+      }
+
+      if (jobAtivoDepoisErro) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Emissão iniciada com sucesso.",
+            jobId: Number(novoJob.id),
+            status: jobAtivoDepoisErro.status || invoiceDepoisErro?.status || "queued",
+            invoice: montarRetornoInvoice(
+              invoiceDepoisErro || invoice,
+              jobAtivoDepoisErro.status || "pending"
+            ),
+          },
+          { status: 200 }
+        );
+      }
     }
 
     return NextResponse.json(
@@ -910,16 +987,7 @@ export async function POST(request: Request) {
         message: "Emissão iniciada com sucesso.",
         jobId: Number(novoJob.id),
         status: "queued",
-        invoice: {
-          id: invoice.id,
-          status: "pending",
-          nfse_key: null,
-          pdf_url: null,
-          xml_url: null,
-          pdf_path: null,
-          xml_path: null,
-          error_message: null,
-        },
+        invoice: montarRetornoInvoice(invoice, "pending"),
       },
       { status: 200 }
     );
@@ -928,6 +996,38 @@ export async function POST(request: Request) {
 
     if (invoiceId) {
       const { data: invoiceAntesDoErroFinal } = await buscarInvoice(invoiceId);
+      const { data: jobAtivoAntesDoErroFinal } = await buscarJobAtivo(invoiceId);
+
+      if (isFinalInvoiceSuccess(invoiceAntesDoErroFinal)) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Nota emitida com sucesso.",
+            status: "success",
+            invoice: montarRetornoInvoice(invoiceAntesDoErroFinal, "success"),
+          },
+          { status: 200 }
+        );
+      }
+
+      if (jobAtivoAntesDoErroFinal) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Emissão iniciada com sucesso.",
+            jobId: jobAtivoAntesDoErroFinal.id,
+            status:
+              jobAtivoAntesDoErroFinal.status ||
+              invoiceAntesDoErroFinal?.status ||
+              "pending",
+            invoice: montarRetornoInvoice(
+              invoiceAntesDoErroFinal,
+              jobAtivoAntesDoErroFinal.status || "pending"
+            ),
+          },
+          { status: 200 }
+        );
+      }
 
       if (!isFinalInvoiceSuccess(invoiceAntesDoErroFinal)) {
         await marcarInvoiceErro(

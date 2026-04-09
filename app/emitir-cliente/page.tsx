@@ -359,6 +359,23 @@ export default function EmitirClientePage() {
     setSalvando(false);
   }
 
+  async function buscarInvoiceAtual(invoiceId: number) {
+    const { data, error } = await supabase
+      .from("invoices")
+      .select(
+        "id, competency_date, service_taker, tax_code, service_city, service_value, service_description, pdf_url, xml_url, nfse_key, status, error_message"
+      )
+      .eq("id", invoiceId)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return data;
+  }
+
+
   async function iniciarAcompanhamentoNota(invoiceId: number, notaBase: UltimaNota) {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -375,13 +392,8 @@ export default function EmitirClientePage() {
       tentativas += 1;
 
       try {
-        const { data, error } = await supabase
-          .from("invoices")
-          .select(
-            "id, competency_date, service_taker, tax_code, service_city, service_value, service_description, pdf_url, xml_url, nfse_key, status, error_message"
-          )
-          .eq("id", invoiceId)
-          .single();
+        const data = await buscarInvoiceAtual(invoiceId);
+        const error = !data;
 
         if (error || !data) {
           if (tentativas >= maxTentativas) {
@@ -426,7 +438,7 @@ export default function EmitirClientePage() {
           return;
         }
 
-        if (statusAtual === "error" || statusAtual === "erro") {
+        if ((statusAtual === "error" || statusAtual === "erro") && !temChave) {
           pararAcompanhamento();
           setMensagem(data.error_message || "Erro ao concluir a emissão da nota.");
           setTipoMensagem("erro");
@@ -682,7 +694,7 @@ export default function EmitirClientePage() {
         resultadoAutomacao?.status ||
         "queued";
 
-      const notaEmitida: UltimaNota = {
+      let notaEmitida: UltimaNota = {
         id: invoiceIdFinal,
         competency_date: competencyDate,
         service_taker: tomadorFinal,
@@ -694,8 +706,52 @@ export default function EmitirClientePage() {
         xml_url: resultadoAutomacao?.invoice?.xml_url || resultadoAutomacao?.xmlUrl || null,
         nfse_key: resultadoAutomacao?.invoice?.nfse_key || resultadoAutomacao?.nfseKey || null,
         status: statusRetorno,
-        error_message: resultadoAutomacao?.invoice?.error_message || null,
+        error_message:
+          resultadoAutomacao?.invoice?.error_message ||
+          resultadoAutomacao?.message ||
+          resultadoAutomacao?.error ||
+          null,
       };
+
+      const invoiceAtualBanco = await buscarInvoiceAtual(invoiceIdFinal);
+
+      if (invoiceAtualBanco) {
+        notaEmitida = {
+          id: invoiceAtualBanco.id,
+          competency_date: invoiceAtualBanco.competency_date || competencyDate,
+          service_taker: invoiceAtualBanco.service_taker || tomadorFinal,
+          tax_code: invoiceAtualBanco.tax_code || taxCode.trim(),
+          service_city: invoiceAtualBanco.service_city || serviceCity.trim(),
+          service_value: Number(invoiceAtualBanco.service_value ?? valorFinal),
+          service_description: invoiceAtualBanco.service_description || descricaoFinal,
+          pdf_url:
+            invoiceAtualBanco.pdf_url ||
+            resultadoAutomacao?.invoice?.pdf_url ||
+            resultadoAutomacao?.pdfUrl ||
+            null,
+          xml_url:
+            invoiceAtualBanco.xml_url ||
+            resultadoAutomacao?.invoice?.xml_url ||
+            resultadoAutomacao?.xmlUrl ||
+            null,
+          nfse_key:
+            invoiceAtualBanco.nfse_key ||
+            resultadoAutomacao?.invoice?.nfse_key ||
+            resultadoAutomacao?.nfseKey ||
+            null,
+          status:
+            invoiceAtualBanco.status ||
+            resultadoAutomacao?.invoice?.status ||
+            resultadoAutomacao?.status ||
+            statusRetorno,
+          error_message:
+            invoiceAtualBanco.error_message ||
+            resultadoAutomacao?.invoice?.error_message ||
+            resultadoAutomacao?.message ||
+            resultadoAutomacao?.error ||
+            null,
+        };
+      }
 
       setUltimaNota(notaEmitida);
 
@@ -713,7 +769,7 @@ export default function EmitirClientePage() {
             return;
           }
 
-          if (statusDeErro(notaEmitida.status)) {
+          if (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key) {
             setMensagem(
               notaEmitida.error_message ||
                 resultadoAutomacao?.message ||

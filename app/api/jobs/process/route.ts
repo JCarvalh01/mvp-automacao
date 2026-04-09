@@ -279,6 +279,27 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
   };
 }
 
+async function buscarInvoiceStatus(invoiceId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, status, nfse_key, pdf_url, xml_url, error_message")
+    .eq("id", invoiceId)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as {
+    id: number;
+    status: string | null;
+    nfse_key: string | null;
+    pdf_url: string | null;
+    xml_url: string | null;
+    error_message: string | null;
+  };
+}
+
 async function liberarJobsTravados() {
   const staleIso = getStaleJobIsoDate();
 
@@ -793,6 +814,48 @@ export async function POST(_request: NextRequest) {
             success: false,
             canceled: true,
             message: "Emissão cancelada pelo usuário.",
+          });
+
+          continue;
+        }
+
+        let invoiceAtual: Awaited<ReturnType<typeof buscarInvoiceStatus>> | null = null;
+
+        try {
+          invoiceAtual = await buscarInvoiceStatus(jobComTentativa.invoice_id);
+        } catch (invoiceReadError) {
+          console.error("Erro ao reler invoice após falha do job:", invoiceReadError);
+        }
+
+        if (invoiceAtual?.nfse_key || invoiceAtual?.status === "success") {
+          await finalizarJobSucesso(jobComTentativa.id, {
+            success: true,
+            jobId: jobComTentativa.id,
+            invoiceId: jobComTentativa.invoice_id,
+            result: {
+              success: true,
+              nfseKey: invoiceAtual.nfse_key,
+              pdfUrl: invoiceAtual.pdf_url,
+              xmlUrl: invoiceAtual.xml_url,
+              warning: invoiceAtual.error_message,
+            },
+          });
+
+          processedCount += 1;
+          successCount += 1;
+
+          resultados.push({
+            jobId: jobComTentativa.id,
+            invoiceId: jobComTentativa.invoice_id,
+            success: true,
+            canceled: false,
+            message: "Invoice já estava concluída como sucesso após a releitura final.",
+            result: {
+              nfseKey: invoiceAtual.nfse_key,
+              pdfUrl: invoiceAtual.pdf_url,
+              xmlUrl: invoiceAtual.xml_url,
+              warning: invoiceAtual.error_message,
+            },
           });
 
           continue;
