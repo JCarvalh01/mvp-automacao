@@ -263,6 +263,7 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
       xml_url: xmlUrlFinal,
       pdf_path: null,
       xml_path: null,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
 
@@ -295,8 +296,7 @@ async function liberarJobsTravados() {
   const lista = (jobsTravados as InvoiceJob[] | null) || [];
 
   for (const job of lista) {
-    const excedeu =
-      Number(job.attempts || 0) >= Number(job.max_attempts || 3);
+    const excedeu = Number(job.attempts || 0) >= Number(job.max_attempts || 3);
 
     if (excedeu) {
       await supabaseAdmin
@@ -312,6 +312,7 @@ async function liberarJobsTravados() {
               "Job travado em processamento por tempo excedido. Limite de tentativas atingido.",
             staleRecovery: true,
           },
+          updated_at: new Date().toISOString(),
         })
         .eq("id", job.id);
 
@@ -346,6 +347,7 @@ async function liberarJobsTravados() {
           staleRecovery: true,
           message: "Job recuperado automaticamente após travar em processing.",
         },
+        updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);
 
@@ -396,6 +398,7 @@ async function travarJob(jobId: number) {
       status: "processing",
       locked_at: agora,
       started_at: agora,
+      updated_at: agora,
     })
     .eq("id", jobId)
     .eq("status", "queued")
@@ -416,6 +419,7 @@ async function incrementarTentativa(job: InvoiceJob) {
     .from("invoice_jobs")
     .update({
       attempts: proximaTentativa,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", job.id);
 
@@ -429,14 +433,20 @@ async function incrementarTentativa(job: InvoiceJob) {
 async function finalizarJobSucesso(jobId: number, result: any) {
   const agora = new Date().toISOString();
 
+  const resultPayload = result?.result ?? result ?? null;
+  const errorMessageFinal =
+    resultPayload?.warning ||
+    (resultPayload?.pdfUrl && resultPayload?.xmlUrl ? null : "Arquivos PDF/XML pendentes ou indisponíveis.");
+
   const { error } = await supabaseAdmin
     .from("invoice_jobs")
     .update({
       status: "success",
       finished_at: agora,
       locked_at: null,
-      result,
-      error_message: null,
+      result: resultPayload,
+      error_message: errorMessageFinal,
+      updated_at: agora,
     })
     .eq("id", jobId);
 
@@ -458,6 +468,7 @@ async function finalizarJobErro(job: InvoiceJob, mensagem: string, result: any =
       locked_at: null,
       error_message: mensagem,
       result,
+      updated_at: agora,
     })
     .eq("id", job.id);
 
@@ -480,6 +491,7 @@ async function finalizarJobCancelado(
       locked_at: null,
       error_message: mensagem,
       result: { canceled: true, message: mensagem },
+      updated_at: agora,
     })
     .eq("id", jobId);
 
@@ -667,7 +679,12 @@ async function processarJob(job: InvoiceJob) {
 
   await finalizarJobSucesso(job.id, {
     success: true,
-    ...storageResult,
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    result: {
+      success: true,
+      ...storageResult,
+    },
   });
 
   return {
@@ -737,6 +754,7 @@ export async function POST(_request: NextRequest) {
           success: Boolean(resultado?.success),
           canceled: Boolean(resultado?.canceled),
           message: resultado?.message || null,
+          result: resultado?.result || null,
         });
       } catch (error: any) {
         const mensagemErro = String(error?.message || "Erro ao processar job.");
