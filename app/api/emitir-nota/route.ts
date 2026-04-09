@@ -144,14 +144,8 @@ function isFinalInvoiceSuccess(invoice: InvoiceRow | null | undefined) {
   const status = String(invoice.status || "").trim().toLowerCase();
   const hasStatusSuccess = status === "success";
   const hasNfseKey = Boolean(String(invoice.nfse_key || "").trim());
-  const hasPdf = Boolean(
-    String(invoice.pdf_url || invoice.pdf_path || "").trim()
-  );
-  const hasXml = Boolean(
-    String(invoice.xml_url || invoice.xml_path || "").trim()
-  );
 
-  return hasStatusSuccess && hasNfseKey && hasPdf && hasXml;
+  return hasStatusSuccess && hasNfseKey;
 }
 
 async function bloquearClientePorVencimento(clientId: number) {
@@ -745,11 +739,14 @@ export async function POST(request: Request) {
       try {
         const { data } = await supabaseAdmin
           .from("invoices")
-          .select("status")
+          .select("status, nfse_key")
           .eq("id", invoiceId as number)
           .single();
 
-        if (data?.status === "processing" || data?.status === "queued") {
+        if (
+          (data?.status === "processing" || data?.status === "queued") &&
+          !data?.nfse_key
+        ) {
           await marcarInvoiceErro(
             invoiceId as number,
             "Timeout na automação (processamento não finalizado)."
@@ -855,6 +852,8 @@ export async function POST(request: Request) {
       workerUrl,
     });
 
+    let processResult: any = null;
+
     try {
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL ||
@@ -872,11 +871,91 @@ export async function POST(request: Request) {
         cache: "no-store",
       });
 
-      const processResult = await processResponse.json().catch(() => null);
+      try {
+        processResult = await processResponse.json();
+      } catch {
+        processResult = null;
+      }
 
       console.log("✅ Resultado processamento:", processResult);
+
+      const { data: invoiceAtualizada } = await buscarInvoice(invoiceId);
+
+      if (isFinalInvoiceSuccess(invoiceAtualizada)) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Nota emitida com sucesso.",
+            jobId: Number(novoJob.id),
+            status: "success",
+            invoice: {
+              id: invoiceAtualizada!.id,
+              status: invoiceAtualizada!.status,
+              nfse_key: invoiceAtualizada!.nfse_key,
+              pdf_url: invoiceAtualizada!.pdf_url,
+              xml_url: invoiceAtualizada!.xml_url,
+              pdf_path: invoiceAtualizada!.pdf_path,
+              xml_path: invoiceAtualizada!.xml_path,
+              error_message: invoiceAtualizada!.error_message,
+            },
+          },
+          { status: 200 }
+        );
+      }
+
+      if (processResult?.success === false) {
+        console.error("❌ /api/jobs/process retornou erro:", processResult);
+
+        const { data: invoiceDepoisErro } = await buscarInvoice(invoiceId);
+
+        if (isFinalInvoiceSuccess(invoiceDepoisErro)) {
+          return NextResponse.json(
+            {
+              success: true,
+              message: "Nota emitida com sucesso.",
+              jobId: Number(novoJob.id),
+              status: "success",
+              invoice: {
+                id: invoiceDepoisErro!.id,
+                status: invoiceDepoisErro!.status,
+                nfse_key: invoiceDepoisErro!.nfse_key,
+                pdf_url: invoiceDepoisErro!.pdf_url,
+                xml_url: invoiceDepoisErro!.xml_url,
+                pdf_path: invoiceDepoisErro!.pdf_path,
+                xml_path: invoiceDepoisErro!.xml_path,
+                error_message: invoiceDepoisErro!.error_message,
+              },
+            },
+            { status: 200 }
+          );
+        }
+      }
     } catch (err) {
       console.error("Erro ao processar job imediatamente:", err);
+
+      const { data: invoicePosErroProcessamento } = await buscarInvoice(invoiceId);
+
+      if (isFinalInvoiceSuccess(invoicePosErroProcessamento)) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "Nota emitida com sucesso.",
+            jobId: Number(novoJob.id),
+            status: "success",
+            invoice: {
+              id: invoicePosErroProcessamento!.id,
+              status: invoicePosErroProcessamento!.status,
+              nfse_key: invoicePosErroProcessamento!.nfse_key,
+              pdf_url: invoicePosErroProcessamento!.pdf_url,
+              xml_url: invoicePosErroProcessamento!.xml_url,
+              pdf_path: invoicePosErroProcessamento!.pdf_path,
+              xml_path: invoicePosErroProcessamento!.xml_path,
+              error_message: invoicePosErroProcessamento!.error_message,
+            },
+          },
+          { status: 200 }
+        );
+      }
     }
 
     return NextResponse.json(
@@ -902,10 +981,14 @@ export async function POST(request: Request) {
     console.error("Erro geral em /api/emitir-nota:", error);
 
     if (invoiceId) {
-      await marcarInvoiceErro(
-        invoiceId,
-        error?.message || "Erro inesperado ao iniciar a emissão."
-      );
+      const { data: invoiceAntesDoErroFinal } = await buscarInvoice(invoiceId);
+
+      if (!isFinalInvoiceSuccess(invoiceAntesDoErroFinal)) {
+        await marcarInvoiceErro(
+          invoiceId,
+          error?.message || "Erro inesperado ao iniciar a emissão."
+        );
+      }
     }
 
     return NextResponse.json(
