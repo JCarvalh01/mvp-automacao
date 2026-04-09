@@ -744,7 +744,7 @@ export async function POST(request: Request) {
           .single();
 
         if (
-          (data?.status === "processing" || data?.status === "queued") &&
+          (data?.status === "processing" || data?.status === "queued" || data?.status === "pending") &&
           !data?.nfse_key
         ) {
           await marcarInvoiceErro(
@@ -852,8 +852,6 @@ export async function POST(request: Request) {
       workerUrl,
     });
 
-    let processResult: any = null;
-
     try {
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL ||
@@ -871,11 +869,7 @@ export async function POST(request: Request) {
         cache: "no-store",
       });
 
-      try {
-        processResult = await processResponse.json();
-      } catch {
-        processResult = null;
-      }
+      const processResult = await processResponse.json().catch(() => null);
 
       console.log("✅ Resultado processamento:", processResult);
 
@@ -905,57 +899,9 @@ export async function POST(request: Request) {
 
       if (processResult?.success === false) {
         console.error("❌ /api/jobs/process retornou erro:", processResult);
-
-        const { data: invoiceDepoisErro } = await buscarInvoice(invoiceId);
-
-        if (isFinalInvoiceSuccess(invoiceDepoisErro)) {
-          return NextResponse.json(
-            {
-              success: true,
-              message: "Nota emitida com sucesso.",
-              jobId: Number(novoJob.id),
-              status: "success",
-              invoice: {
-                id: invoiceDepoisErro!.id,
-                status: invoiceDepoisErro!.status,
-                nfse_key: invoiceDepoisErro!.nfse_key,
-                pdf_url: invoiceDepoisErro!.pdf_url,
-                xml_url: invoiceDepoisErro!.xml_url,
-                pdf_path: invoiceDepoisErro!.pdf_path,
-                xml_path: invoiceDepoisErro!.xml_path,
-                error_message: invoiceDepoisErro!.error_message,
-              },
-            },
-            { status: 200 }
-          );
-        }
       }
     } catch (err) {
       console.error("Erro ao processar job imediatamente:", err);
-
-      const { data: invoicePosErroProcessamento } = await buscarInvoice(invoiceId);
-
-      if (isFinalInvoiceSuccess(invoicePosErroProcessamento)) {
-        return NextResponse.json(
-          {
-            success: true,
-            message: "Nota emitida com sucesso.",
-            jobId: Number(novoJob.id),
-            status: "success",
-            invoice: {
-              id: invoicePosErroProcessamento!.id,
-              status: invoicePosErroProcessamento!.status,
-              nfse_key: invoicePosErroProcessamento!.nfse_key,
-              pdf_url: invoicePosErroProcessamento!.pdf_url,
-              xml_url: invoicePosErroProcessamento!.xml_url,
-              pdf_path: invoicePosErroProcessamento!.pdf_path,
-              xml_path: invoicePosErroProcessamento!.xml_path,
-              error_message: invoicePosErroProcessamento!.error_message,
-            },
-          },
-          { status: 200 }
-        );
-      }
     }
 
     return NextResponse.json(
