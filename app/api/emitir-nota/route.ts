@@ -735,30 +735,6 @@ export async function POST(request: Request) {
       );
     }
 
-    setTimeout(async () => {
-      try {
-        const { data } = await supabaseAdmin
-          .from("invoices")
-          .select("status, nfse_key")
-          .eq("id", invoiceId as number)
-          .single();
-
-        if (
-          (data?.status === "processing" ||
-            data?.status === "queued" ||
-            data?.status === "pending") &&
-          !data?.nfse_key
-        ) {
-          await marcarInvoiceErro(
-            invoiceId as number,
-            "Timeout na automação (processamento não finalizado)."
-          );
-        }
-      } catch (err) {
-        console.error("Erro no failsafe da invoice:", err);
-      }
-    }, 180000);
-
     const planTypeLog = String(cliente.plan_type || "").trim().toLowerCase();
     const notesLimitLog = getEffectiveNotesLimit(planTypeLog, cliente.notes_limit);
 
