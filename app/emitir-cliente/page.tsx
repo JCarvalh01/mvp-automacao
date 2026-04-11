@@ -375,7 +375,6 @@ export default function EmitirClientePage() {
     return data;
   }
 
-
   async function iniciarAcompanhamentoNota(invoiceId: number, notaBase: UltimaNota) {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -758,52 +757,41 @@ export default function EmitirClientePage() {
       const retornoJaConcluido =
         notaFoiGerada(notaEmitida.status, notaEmitida.nfse_key) ||
         statusCancelado(notaEmitida.status) ||
-        statusDeErro(notaEmitida.status);
+        (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key);
 
-      if (!respostaOk || !resultadoAutomacao?.success) {
-        if (retornoJaConcluido) {
-          if (statusCancelado(notaEmitida.status)) {
-            setMensagem("Emissão cancelada.");
-            setTipoMensagem("aviso");
-            setSalvando(false);
-            return;
-          }
+      const retornoInicialEhAssincrono =
+        statusRetorno === "queued" ||
+        statusRetorno === "pending" ||
+        statusRetorno === "processing" ||
+        (!respostaOk && !retornoJaConcluido) ||
+        (!resultadoAutomacao?.success && !retornoJaConcluido);
 
-          if (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key) {
-            setMensagem(
-              notaEmitida.error_message ||
-                resultadoAutomacao?.message ||
-                resultadoAutomacao?.error ||
-                "Erro na automação."
-            );
-            setTipoMensagem("erro");
-            setSalvando(false);
-            return;
-          }
-
-          if (notaFoiGerada(notaEmitida.status, notaEmitida.nfse_key)) {
-            setMensagem("Nota emitida com sucesso!");
-            setTipoMensagem("sucesso");
-            resetarFormularioAposEnvio();
-            setSalvando(false);
-            return;
-          }
-        }
-
-        setMensagem("Emitindo nota fiscal... aguarde a conclusão.");
+      if (statusCancelado(notaEmitida.status)) {
+        setMensagem("Emissão cancelada.");
         setTipoMensagem("aviso");
-        resetarFormularioAposEnvio();
-        await iniciarAcompanhamentoNota(invoiceIdFinal, notaEmitida);
+        setSalvando(false);
         return;
       }
 
-      if (notaFoiGerada(statusRetorno, notaEmitida.nfse_key)) {
-        if (notaEmitida.error_message) {
-          setMensagem("Nota emitida, mas houve um aviso no processamento.");
-          setTipoMensagem("aviso");
-        } else {
+      if (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key) {
+        setMensagem(
+          notaEmitida.error_message ||
+            resultadoAutomacao?.message ||
+            resultadoAutomacao?.error ||
+            "Erro na automação."
+        );
+        setTipoMensagem("erro");
+        setSalvando(false);
+        return;
+      }
+
+      if (notaFoiGerada(notaEmitida.status, notaEmitida.nfse_key)) {
+        if (notaEmitida.pdf_url || notaEmitida.xml_url) {
           setMensagem("Nota emitida com sucesso!");
           setTipoMensagem("sucesso");
+        } else {
+          setMensagem("Nota emitida com sucesso. PDF/XML ainda estão sendo liberados.");
+          setTipoMensagem("aviso");
         }
 
         resetarFormularioAposEnvio();
@@ -811,11 +799,7 @@ export default function EmitirClientePage() {
         return;
       }
 
-      if (
-        statusRetorno === "queued" ||
-        statusRetorno === "pending" ||
-        statusRetorno === "processing"
-      ) {
+      if (retornoInicialEhAssincrono) {
         setMensagem("Emitindo nota fiscal... aguarde a conclusão.");
         setTipoMensagem("aviso");
         resetarFormularioAposEnvio();
