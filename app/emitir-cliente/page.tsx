@@ -139,10 +139,9 @@ function statusCancelado(status?: string | null) {
   return valor === "canceled" || valor === "cancelada";
 }
 
-function notaFoiGerada(status?: string | null, nfseKey?: string | null) {
+function notaFoiGerada(status?: string | null) {
   const valor = statusNormalizado(status);
-  const temChave = Boolean(String(nfseKey || "").trim());
-  return valor === "success" || valor === "sucesso" || temChave;
+  return valor === "success" || valor === "sucesso";
 }
 
 function getStatusMeta(status?: string | null, nfseKey?: string | null) {
@@ -421,9 +420,8 @@ export default function EmitirClientePage() {
         setUltimaNota(notaAtualizada);
 
         const statusAtual = statusNormalizado(data.status);
-        const temChave = Boolean(String(data.nfse_key || "").trim());
 
-        if (statusAtual === "success" || temChave) {
+        if (statusAtual === "success" || statusAtual === "sucesso") {
           pararAcompanhamento();
 
           if (data.pdf_url || data.xml_url) {
@@ -437,7 +435,7 @@ export default function EmitirClientePage() {
           return;
         }
 
-        if ((statusAtual === "error" || statusAtual === "erro") && !temChave) {
+        if (statusAtual === "error" || statusAtual === "erro") {
           pararAcompanhamento();
           setMensagem(data.error_message || "Erro ao concluir a emissão da nota.");
           setTipoMensagem("erro");
@@ -476,7 +474,7 @@ export default function EmitirClientePage() {
   }
 
   const statusMeta = getStatusMeta(ultimaNota?.status, ultimaNota?.nfse_key);
-  const notaGerada = notaFoiGerada(ultimaNota?.status, ultimaNota?.nfse_key);
+  const notaGerada = notaFoiGerada(ultimaNota?.status);
   const podeAbrirPdf = Boolean(ultimaNota?.pdf_url);
   const podeAbrirXml = Boolean(ultimaNota?.xml_url);
   const exibindoProcessamento = salvando || acompanhandoNota;
@@ -755,9 +753,9 @@ export default function EmitirClientePage() {
       setUltimaNota(notaEmitida);
 
       const retornoJaConcluido =
-        notaFoiGerada(notaEmitida.status, notaEmitida.nfse_key) ||
+        notaFoiGerada(notaEmitida.status) ||
         statusCancelado(notaEmitida.status) ||
-        (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key);
+        statusDeErro(notaEmitida.status);
 
       const retornoInicialEhAssincrono =
         statusRetorno === "queued" ||
@@ -773,7 +771,7 @@ export default function EmitirClientePage() {
         return;
       }
 
-      if (statusDeErro(notaEmitida.status) && !notaEmitida.nfse_key) {
+      if (statusDeErro(notaEmitida.status)) {
         setMensagem(
           notaEmitida.error_message ||
             resultadoAutomacao?.message ||
@@ -785,7 +783,7 @@ export default function EmitirClientePage() {
         return;
       }
 
-      if (notaFoiGerada(notaEmitida.status, notaEmitida.nfse_key)) {
+      if (notaFoiGerada(notaEmitida.status)) {
         if (notaEmitida.pdf_url || notaEmitida.xml_url) {
           setMensagem("Nota emitida com sucesso!");
           setTipoMensagem("sucesso");

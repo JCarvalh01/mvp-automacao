@@ -117,8 +117,8 @@ function parseValorMonetario(valor: string) {
 }
 
 function notaFoiGerada(status?: string | null) {
-  const valor = String(status || "").toLowerCase();
-  return valor.includes("success") || valor.includes("sucesso");
+  const valor = String(status || "").trim().toLowerCase();
+  return valor === "success" || valor === "sucesso";
 }
 
 function getStatusMeta(status?: string | null) {
