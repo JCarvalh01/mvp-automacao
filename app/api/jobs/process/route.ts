@@ -253,6 +253,9 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
       "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
   }
 
+  const pdfPathFinal = pdfUrlFinal || null;
+  const xmlPathFinal = xmlUrlFinal || null;
+
   const { error } = await supabaseAdmin
     .from("invoices")
     .update({
@@ -261,8 +264,8 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
       nfse_key: nfseKeyFinal,
       pdf_url: pdfUrlFinal,
       xml_url: xmlUrlFinal,
-      pdf_path: null,
-      xml_path: null,
+      pdf_path: pdfPathFinal,
+      xml_path: xmlPathFinal,
       updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
@@ -275,6 +278,8 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
     nfseKey: nfseKeyFinal,
     pdfUrl: pdfUrlFinal,
     xmlUrl: xmlUrlFinal,
+    pdfPath: pdfPathFinal,
+    xmlPath: xmlPathFinal,
     warning: storageWarning,
   };
 }
@@ -282,7 +287,7 @@ async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResu
 async function buscarInvoiceStatus(invoiceId: number) {
   const { data, error } = await supabaseAdmin
     .from("invoices")
-    .select("id, status, nfse_key, pdf_url, xml_url, error_message")
+    .select("id, status, nfse_key, pdf_url, xml_url, pdf_path, xml_path, error_message")
     .eq("id", invoiceId)
     .single();
 
@@ -296,6 +301,8 @@ async function buscarInvoiceStatus(invoiceId: number) {
     nfse_key: string | null;
     pdf_url: string | null;
     xml_url: string | null;
+    pdf_path: string | null;
+    xml_path: string | null;
     error_message: string | null;
   };
 }
@@ -457,7 +464,9 @@ async function finalizarJobSucesso(jobId: number, result: any) {
   const resultPayload = result?.result ?? result ?? null;
   const errorMessageFinal =
     resultPayload?.warning ||
-    (resultPayload?.pdfUrl && resultPayload?.xmlUrl ? null : "Arquivos PDF/XML pendentes ou indisponíveis.");
+    (resultPayload?.pdfUrl && resultPayload?.xmlUrl
+      ? null
+      : "Arquivos PDF/XML pendentes ou indisponíveis.");
 
   const { error } = await supabaseAdmin
     .from("invoice_jobs")
@@ -694,6 +703,8 @@ async function processarJob(job: InvoiceJob) {
       nfseKey: storageResult.nfseKey,
       pdfUrl: storageResult.pdfUrl,
       xmlUrl: storageResult.xmlUrl,
+      pdfPath: storageResult.pdfPath,
+      xmlPath: storageResult.xmlPath,
       warning: storageResult.warning,
     },
   });
@@ -837,6 +848,8 @@ export async function POST(_request: NextRequest) {
               nfseKey: invoiceAtual.nfse_key,
               pdfUrl: invoiceAtual.pdf_url,
               xmlUrl: invoiceAtual.xml_url,
+              pdfPath: invoiceAtual.pdf_path,
+              xmlPath: invoiceAtual.xml_path,
               warning: invoiceAtual.error_message,
             },
           });
@@ -854,6 +867,8 @@ export async function POST(_request: NextRequest) {
               nfseKey: invoiceAtual.nfse_key,
               pdfUrl: invoiceAtual.pdf_url,
               xmlUrl: invoiceAtual.xml_url,
+              pdfPath: invoiceAtual.pdf_path,
+              xmlPath: invoiceAtual.xml_path,
               warning: invoiceAtual.error_message,
             },
           });
