@@ -295,7 +295,7 @@ async function marcarInvoiceErro(invoiceId: number, mensagem: string) {
 async function contarNotasSuccessDoMes(clientId: number) {
   const { count, error } = await supabaseAdmin
     .from("invoices")
-    .select("*", { count: "exact", head: true })
+    .select("id", { count: "estimated", head: true })
     .eq("client_id", clientId)
     .eq("status", "success")
     .gte("created_at", getMonthStartIso());
