@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/verificar-empresas",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/jobs/process",
-      "schedule": "*/1 * * * *"
     }
   ]
 }
