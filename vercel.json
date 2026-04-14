@@ -12,4 +12,5 @@
       "path": "/api/jobs/process",
       "schedule": "*/1 * * * *"
     }
-  ],
+  ]
+}
