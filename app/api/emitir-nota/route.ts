@@ -328,6 +328,7 @@ async function criarJobEmissao(params: {
     error_message: null,
     payload: params.payload,
     result: null,
+    created_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabaseAdmin
@@ -340,6 +341,28 @@ async function criarJobEmissao(params: {
     data: (data as JobRow | null) || null,
     error,
   };
+}
+
+async function dispararProcessamentoFilaEmBackground() {
+  const appUrl =
+    String(process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    "https://www.mvp-automacao.com";
+
+  const target = `${appUrl.replace(/\/$/, "")}/api/jobs/process`;
+
+  try {
+    fetch(target, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }).catch((error) => {
+      console.error("Erro ao disparar processamento da fila:", error);
+    });
+  } catch (error) {
+    console.error("Erro ao iniciar disparo da fila:", error);
+  }
 }
 
 export async function POST(request: Request) {
@@ -704,6 +727,8 @@ export async function POST(request: Request) {
     if (jobAtivo) {
       await marcarInvoiceQueued(invoiceId);
 
+      void dispararProcessamentoFilaEmBackground();
+
       return NextResponse.json(
         {
           success: true,
@@ -777,6 +802,8 @@ export async function POST(request: Request) {
         serviceValue: serviceValueParsed,
       },
     });
+
+    void dispararProcessamentoFilaEmBackground();
 
     return NextResponse.json(
       {
