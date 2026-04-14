@@ -144,11 +144,10 @@ function notaFoiGerada(status?: string | null) {
   return valor === "success" || valor === "sucesso";
 }
 
-function getStatusMeta(status?: string | null, nfseKey?: string | null) {
+function getStatusMeta(status?: string | null, _nfseKey?: string | null) {
   const valor = statusNormalizado(status);
-  const temChave = Boolean(String(nfseKey || "").trim());
 
-  if (valor.includes("success") || valor.includes("sucesso") || temChave) {
+  if (valor === "success" || valor === "sucesso") {
     return {
       label: "Emitida",
       bg: "#dcfce7",
@@ -1166,7 +1165,9 @@ export default function EmitirClientePage() {
 
                   {!podeAbrirPdf && !podeAbrirXml && (
                     <div style={resultPendingFilesStyle}>
-                      Os arquivos serão liberados somente após a nota ser gerada.
+                      {notaGerada
+                        ? "PDF/XML ainda estão sendo liberados. Aguarde a persistência final dos arquivos."
+                        : "Os arquivos serão liberados somente após a nota ser gerada."}
                     </div>
                   )}
                 </div>

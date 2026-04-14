@@ -53,6 +53,7 @@ type PartnerCompanyRow = {
 type JobRow = {
   id: number;
   status: string | null;
+  created_at?: string | null;
 };
 
 export const runtime = "nodejs";
@@ -245,7 +246,7 @@ async function buscarEmpresaParceira(partnerCompanyId: number) {
 async function buscarJobAtivo(invoiceId: number) {
   const { data, error } = await supabaseAdmin
     .from("invoice_jobs")
-    .select("id, status")
+    .select("id, status, created_at")
     .eq("invoice_id", invoiceId)
     .in("status", ["queued", "processing"])
     .order("created_at", { ascending: false })
@@ -264,6 +265,18 @@ async function marcarInvoicePending(invoiceId: number) {
     .update({
       status: "pending",
       error_message: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoiceId);
+}
+
+async function marcarInvoiceQueued(invoiceId: number) {
+  return await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "queued",
+      error_message: null,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
 }
@@ -274,6 +287,7 @@ async function marcarInvoiceErro(invoiceId: number, mensagem: string) {
     .update({
       status: "error",
       error_message: mensagem,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
 }
@@ -292,15 +306,53 @@ async function contarNotasSuccessDoMes(clientId: number) {
   };
 }
 
+async function criarJobEmissao(params: {
+  invoiceId: number;
+  clientId: number;
+  partnerCompanyId: number | null;
+  payload: any;
+}) {
+  const insertPayload = {
+    invoice_id: params.invoiceId,
+    client_id: params.clientId,
+    partner_company_id: params.partnerCompanyId,
+    job_type: "emit_nfse",
+    status: "queued",
+    attempts: 0,
+    max_attempts: 3,
+    locked_at: null,
+    started_at: null,
+    finished_at: null,
+    cancel_requested: false,
+    cancel_requested_at: null,
+    error_message: null,
+    payload: params.payload,
+    result: null,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .insert(insertPayload)
+    .select("id, status, created_at")
+    .single();
+
+  return {
+    data: (data as JobRow | null) || null,
+    error,
+  };
+}
+
 export async function POST(request: Request) {
   let invoiceId: number | null = null;
+  let clientIdParsed = NaN;
+  let partnerCompanyIdParsed = NaN;
 
   try {
     const body = (await request.json()) as EmitirNotaBody;
 
     const invoiceIdParsed = toNumber(body.invoiceId);
-    const clientIdParsed = toNumber(body.clientId);
-    const partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
+    clientIdParsed = toNumber(body.clientId);
+    partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
     const serviceValueParsed = toNumber(body.serviceValue);
 
     const isClienteDiretoPeloBody =
@@ -339,18 +391,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const workerUrl = String(process.env.NFSE_WORKER_URL || "").trim();
-
-    if (!workerUrl) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "NFSE_WORKER_URL não configurado no ambiente.",
-        },
-        { status: 500 }
-      );
-    }
-
     const { data: invoiceAtual, error: invoiceError } = await buscarInvoice(invoiceId);
 
     if (invoiceError || !invoiceAtual) {
@@ -372,6 +412,7 @@ export async function POST(request: Request) {
         {
           success: true,
           message: "Nota já emitida anteriormente.",
+          status: "success",
           invoice: {
             id: invoice.id,
             status: invoice.status,
@@ -388,12 +429,6 @@ export async function POST(request: Request) {
     }
 
     if (Number(invoice.client_id) !== clientIdParsed) {
-      console.error("Invoice não pertence ao cliente informado.", {
-        invoiceId,
-        clientIdRecebido: clientIdParsed,
-        clientIdInvoice: invoice.client_id,
-      });
-
       return NextResponse.json(
         {
           success: false,
@@ -407,12 +442,6 @@ export async function POST(request: Request) {
       !isClienteDiretoPeloBody &&
       Number(invoice.partner_company_id) !== partnerCompanyIdParsed
     ) {
-      console.error("Invoice não pertence à empresa informada.", {
-        invoiceId,
-        partnerCompanyIdRecebido: partnerCompanyIdParsed,
-        partnerCompanyIdInvoice: invoice.partner_company_id,
-      });
-
       return NextResponse.json(
         {
           success: false,
@@ -440,8 +469,6 @@ export async function POST(request: Request) {
     const { data: clienteAtual, error: clientError } = await buscarCliente(clientIdParsed);
 
     if (clientError || !clienteAtual) {
-      console.error("Cliente não encontrado:", clientError);
-
       await marcarInvoiceErro(invoiceId, "Cliente não encontrado.");
       return NextResponse.json(
         {
@@ -572,8 +599,6 @@ export async function POST(request: Request) {
         await buscarEmpresaParceira(partnerCompanyIdEfetivo!);
 
       if (empresaError || !empresaAtual) {
-        console.error("Empresa parceira não encontrada:", empresaError);
-
         await marcarInvoiceErro(invoiceId, "Empresa não encontrada.");
         return NextResponse.json(
           {
@@ -649,50 +674,26 @@ export async function POST(request: Request) {
         );
       }
 
-      const planType = String(cliente.plan_type || "").trim().toLowerCase();
-      const notesLimit = getEffectiveNotesLimit(planType, cliente.notes_limit);
+      const limite = getEffectiveNotesLimit(cliente.plan_type, cliente.notes_limit);
 
-      if (!planType) {
-        await marcarInvoiceErro(invoiceId, "Cliente sem plano ativo.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Escolha um plano antes de emitir notas.",
-          },
-          { status: 403 }
-        );
-      }
+      if (limite > 0) {
+        const { count: notasMes, error: notasError } =
+          await contarNotasSuccessDoMes(cliente.id);
 
-      if (planType === "essencial" && notesLimit > 0) {
-        const { count: totalNotasMes, error: countError } =
-          await contarNotasSuccessDoMes(clientIdParsed);
-
-        if (countError) {
-          console.error("Erro ao contar notas do mês:", countError);
-
+        if (notasError) {
+          console.error("Erro ao contar notas do mês:", notasError);
+        } else if (notasMes >= limite) {
           await marcarInvoiceErro(
             invoiceId,
-            "Não foi possível validar o limite mensal do plano."
+            "Limite mensal de notas atingido para o plano atual."
           );
 
           return NextResponse.json(
             {
               success: false,
-              message: "Não foi possível validar o limite mensal do plano.",
+              message: "Você atingiu o limite mensal de notas do seu plano.",
             },
-            { status: 500 }
-          );
-        }
-
-        if (totalNotasMes >= notesLimit) {
-          await marcarInvoiceErro(invoiceId, "Limite de notas do plano atingido.");
-
-          return NextResponse.json(
-            {
-              success: false,
-              message: "Limite mensal de notas atingido no plano Essencial.",
-            },
-            { status: 400 }
+            { status: 403 }
           );
         }
       }
@@ -701,49 +702,33 @@ export async function POST(request: Request) {
     const { data: jobAtivo } = await buscarJobAtivo(invoiceId);
 
     if (jobAtivo) {
+      await marcarInvoiceQueued(invoiceId);
+
       return NextResponse.json(
         {
           success: true,
-          message: "A emissão desta nota já está em processamento.",
+          message: "A emissão já está em andamento.",
+          status: jobAtivo.status || "queued",
           jobId: jobAtivo.id,
-          status: jobAtivo.status,
           invoice: {
-            id: invoice.id,
-            status: invoice.status || "pending",
-            nfse_key: invoice.nfse_key,
-            pdf_url: invoice.pdf_url,
-            xml_url: invoice.xml_url,
-            pdf_path: invoice.pdf_path,
-            xml_path: invoice.xml_path,
-            error_message: invoice.error_message,
+            id: invoiceId,
+            status: jobAtivo.status || "queued",
+            nfse_key: invoice.nfse_key || null,
+            pdf_url: invoice.pdf_url || null,
+            xml_url: invoice.xml_url || null,
+            error_message: null,
           },
         },
         { status: 200 }
       );
     }
 
-    const { error: pendingError } = await marcarInvoicePending(invoiceId);
-
-    if (pendingError) {
-      console.error("Erro ao marcar invoice como pending:", pendingError);
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Não foi possível preparar a nota para emissão.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const planTypeLog = String(cliente.plan_type || "").trim().toLowerCase();
-    const notesLimitLog = getEffectiveNotesLimit(planTypeLog, cliente.notes_limit);
+    await marcarInvoicePending(invoiceId);
 
     const jobPayload = {
       invoiceId,
       clientId: clientIdParsed,
-      partnerCompanyId: partnerCompanyIdEfetivo,
-      cnpjEmpresa: onlyDigits(cliente.cnpj),
-      senhaEmpresa: senhaEmissor,
+      partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
       competencyDate,
       tomadorDocumento,
       taxCode,
@@ -753,120 +738,77 @@ export async function POST(request: Request) {
       cancelKey,
     };
 
-    const { data: novoJob, error: jobError } = await supabaseAdmin
-      .from("invoice_jobs")
-      .insert({
-        invoice_id: invoiceId,
-        partner_company_id: partnerCompanyIdEfetivo,
-        client_id: clientIdParsed,
-        job_type: "emit_nfse",
-        status: "queued",
-        attempts: 0,
-        max_attempts: 3,
-        locked_at: null,
-        started_at: null,
-        finished_at: null,
-        cancel_requested: false,
-        cancel_requested_at: null,
-        error_message: null,
-        payload: jobPayload,
-        result: null,
-      })
-      .select("id")
-      .single();
+    const { data: jobCriado, error: createJobError } = await criarJobEmissao({
+      invoiceId,
+      clientId: clientIdParsed,
+      partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
+      payload: jobPayload,
+    });
 
-    if (jobError || !novoJob) {
-      console.error("Erro ao criar job:", jobError);
+    if (createJobError || !jobCriado) {
+      console.error("Erro ao criar job da emissão:", createJobError);
 
-      await marcarInvoiceErro(invoiceId, "Erro ao criar job da emissão.");
+      await marcarInvoiceErro(invoiceId, "Não foi possível enfileirar a emissão.");
+
       return NextResponse.json(
         {
           success: false,
-          message: "Não foi possível iniciar a emissão da nota.",
+          message: "Não foi possível enfileirar a emissão.",
         },
         { status: 500 }
       );
     }
 
+    await marcarInvoiceQueued(invoiceId);
+
     await logJob({
-      jobId: Number(novoJob.id),
+      jobId: jobCriado.id,
       invoiceId,
       level: "info",
-      message: "Job enfileirado para emissão da NFS-e.",
+      message: "Job de emissão criado com sucesso.",
       meta: {
+        invoiceId,
+        clientId: clientIdParsed,
+        partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
         competencyDate,
         tomadorDocumento,
         taxCode,
         serviceCity,
         serviceValue: serviceValueParsed,
-        cancelKey,
-        planType: planTypeLog,
-        notesLimit: notesLimitLog,
-        subscriptionStatus: cliente.subscription_status || null,
-        subscriptionExpiresAt: cliente.subscription_expires_at || null,
-        isBlocked: Boolean(cliente.is_blocked),
-        partnerCompanyId: cliente.partner_company_id,
-        clienteVinculadoEmpresa,
-        workerUrl,
       },
-    });
-
-    console.log("=== JOB ENFILEIRADO ===");
-    console.log({
-      jobId: novoJob.id,
-      invoiceId,
-      clientId: clientIdParsed,
-      partnerCompanyIdEfetivo,
-      valor: serviceValueParsed,
-      cidade: serviceCity,
-      competencia: competencyDate,
-      planType: planTypeLog,
-      notesLimit: notesLimitLog,
-      subscriptionStatus: cliente.subscription_status || null,
-      subscriptionExpiresAt: cliente.subscription_expires_at || null,
-      isBlocked: Boolean(cliente.is_blocked),
-      partnerCompanyIdCliente: cliente.partner_company_id,
-      clienteVinculadoEmpresa,
-      workerUrl,
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: "Emissão iniciada com sucesso.",
-        jobId: Number(novoJob.id),
+        message: "Emissão enfileirada com sucesso.",
         status: "queued",
+        jobId: jobCriado.id,
         invoice: {
-          id: invoice.id,
-          status: "pending",
-          nfse_key: null,
-          pdf_url: null,
-          xml_url: null,
-          pdf_path: null,
-          xml_path: null,
+          id: invoiceId,
+          status: "queued",
+          nfse_key: invoice.nfse_key || null,
+          pdf_url: invoice.pdf_url || null,
+          xml_url: invoice.xml_url || null,
           error_message: null,
         },
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Erro geral em /api/emitir-nota:", error);
+    console.error("Erro em /api/emitir-nota:", error);
 
     if (invoiceId) {
-      const { data: invoiceAntesDoErroFinal } = await buscarInvoice(invoiceId);
-
-      if (!isFinalInvoiceSuccess(invoiceAntesDoErroFinal)) {
-        await marcarInvoiceErro(
-          invoiceId,
-          error?.message || "Erro inesperado ao iniciar a emissão."
-        );
-      }
+      await marcarInvoiceErro(
+        invoiceId,
+        String(error?.message || "Erro inesperado ao enfileirar emissão.")
+      ).catch(() => null);
     }
 
     return NextResponse.json(
       {
         success: false,
-        message: error?.message || "Erro inesperado ao iniciar a emissão.",
+        message: String(error?.message || "Erro inesperado ao enfileirar emissão."),
       },
       { status: 500 }
     );
