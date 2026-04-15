@@ -54,7 +54,7 @@ type LinhaValidada = {
   service_value: number;
   service_description: string;
   erros: string[];
-  status?: "pending" | "processing" | "success" | "error" | "canceled";
+  status?: "pending" | "queued" | "processing" | "success" | "error" | "canceled";
   mensagemStatus?: string;
   pdfBlob?: Blob | null;
   xmlBlob?: Blob | null;
@@ -144,6 +144,13 @@ function getStatusConfig(status?: LinhaValidada["status"]) {
         border: "#93c5fd",
         color: "#1d4ed8",
       };
+    case "queued":
+      return {
+        label: "Na fila",
+        bg: "#e0e7ff",
+        border: "#a5b4fc",
+        color: "#4338ca",
+      };
     case "error":
       return {
         label: "Erro",
@@ -191,12 +198,65 @@ export default function EmitirMassaPage() {
   const [progresso, setProgresso] = useState(0);
 
   const canceladoRef = useRef(false);
+  const pollingRef = useRef<number | null>(null);
+  const processRef = useRef<number | null>(null);
+  const pollingExecutandoRef = useRef(false);
+  const processExecutandoRef = useRef(false);
 
   useEffect(() => {
     if (!loadingAccess && authorized) {
       carregarDadosIniciais();
     }
   }, [loadingAccess, authorized]);
+
+  useEffect(() => {
+    const possuiPendentes = linhas.some((linha) =>
+      ["queued", "processing", "pending"].includes(String(linha.status || ""))
+    );
+
+    if (!possuiPendentes) {
+      if (pollingRef.current) {
+        window.clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      if (processRef.current) {
+        window.clearInterval(processRef.current);
+        processRef.current = null;
+      }
+      if (loading) {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!pollingRef.current) {
+      pollingRef.current = window.setInterval(() => {
+        void sincronizarStatusLotes();
+      }, 3000);
+    }
+
+    if (!processRef.current) {
+      processRef.current = window.setInterval(() => {
+        void dispararProcessamentoFila();
+      }, 4000);
+    }
+
+    void sincronizarStatusLotes();
+    void dispararProcessamentoFila();
+
+    return () => {};
+  }, [linhas, loading]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        window.clearInterval(pollingRef.current);
+      }
+      if (processRef.current) {
+        window.clearInterval(processRef.current);
+      }
+    };
+  }, []);
 
   async function carregarDadosIniciais() {
     try {
@@ -330,6 +390,19 @@ export default function EmitirMassaPage() {
     });
   }
 
+  function atualizarLinhaPorInvoiceId(invoiceId: number, patch: Partial<LinhaValidada>) {
+    setLinhas((prev) =>
+      prev.map((linha) =>
+        linha.invoice_id === invoiceId
+          ? {
+              ...linha,
+              ...patch,
+            }
+          : linha
+      )
+    );
+  }
+
   async function baixarArquivoComoBlob(url: string) {
     const resposta = await fetch(url);
     if (!resposta.ok) {
@@ -366,87 +439,169 @@ export default function EmitirMassaPage() {
     }
   }
 
-  async function acompanharInvoice(index: number, invoiceId: number) {
-    const maxTentativas = 120;
+  async function hidratarArquivosPorInvoiceId(invoiceId: number, linhaAtualizada: LinhaValidada) {
+    const index = linhas.findIndex((item) => item.invoice_id === invoiceId);
+    if (index >= 0) {
+      await hidratarArquivosDaLinha(index, linhaAtualizada);
+    }
+  }
 
-    for (let tentativa = 0; tentativa < maxTentativas; tentativa++) {
-      if (canceladoRef.current) {
-        await solicitarCancelamentoBackend(invoiceId);
+  async function sincronizarStatusLotes() {
+    if (pollingExecutandoRef.current) return;
+    pollingExecutandoRef.current = true;
+
+    try {
+      const linhasPendentes = linhas.filter(
+        (linha) =>
+          linha.invoice_id &&
+          ["queued", "processing", "pending"].includes(String(linha.status || ""))
+      );
+
+      if (!linhasPendentes.length) {
+        atualizarProgresso();
+        return;
       }
 
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, status, error_message, pdf_url, xml_url, nfse_key")
-        .eq("id", invoiceId)
-        .single();
+      await Promise.all(
+        linhasPendentes.map(async (linha) => {
+          const invoiceId = linha.invoice_id!;
+          const { data, error } = await supabase
+            .from("invoices")
+            .select("id, status, error_message, pdf_url, xml_url, nfse_key")
+            .eq("id", invoiceId)
+            .single();
 
-      if (!error && data) {
-        const statusAtual = String(data.status || "").toLowerCase();
+          if (error || !data) return;
 
-        if (statusAtual === "success") {
-          atualizarLinha(index, {
-            status: "success",
-            mensagemStatus: "Emitida com sucesso.",
+          const statusAtual = String(data.status || "").toLowerCase();
+
+          if (statusAtual === "success") {
+            const linhaAtualizada: LinhaValidada = {
+              ...linha,
+              status: "success",
+              mensagemStatus: data.error_message
+                ? "Emitida com aviso."
+                : "Emitida com sucesso.",
+              pdf_url: data.pdf_url || null,
+              xml_url: data.xml_url || null,
+              nfse_key: data.nfse_key || null,
+              invoice_id: data.id,
+            };
+
+            atualizarLinhaPorInvoiceId(invoiceId, linhaAtualizada);
+            await hidratarArquivosPorInvoiceId(invoiceId, linhaAtualizada);
+            return;
+          }
+
+          if (statusAtual === "error" || statusAtual === "erro") {
+            atualizarLinhaPorInvoiceId(invoiceId, {
+              status: "error",
+              mensagemStatus: data.error_message || "Erro ao emitir nota.",
+              pdf_url: data.pdf_url || null,
+              xml_url: data.xml_url || null,
+              nfse_key: data.nfse_key || null,
+            });
+            return;
+          }
+
+          if (statusAtual === "canceled" || statusAtual === "cancelada") {
+            atualizarLinhaPorInvoiceId(invoiceId, {
+              status: "canceled",
+              mensagemStatus: "Emissão cancelada pelo usuário.",
+            });
+            return;
+          }
+
+          if (statusAtual === "queued" || statusAtual === "pending") {
+            atualizarLinhaPorInvoiceId(invoiceId, {
+              status: "queued",
+              mensagemStatus: "Nota na fila de emissão. Aguarde a conclusão.",
+              pdf_url: data.pdf_url || null,
+              xml_url: data.xml_url || null,
+              nfse_key: data.nfse_key || null,
+            });
+            return;
+          }
+
+          atualizarLinhaPorInvoiceId(invoiceId, {
+            status: "processing",
+            mensagemStatus: "A emissão ainda está em processamento. Aguarde a conclusão.",
             pdf_url: data.pdf_url || null,
             xml_url: data.xml_url || null,
             nfse_key: data.nfse_key || null,
-            invoice_id: data.id,
           });
+        })
+      );
 
-          await hidratarArquivosDaLinha(index, {
-            ...linhas[index],
-            status: "success",
-            mensagemStatus: "Emitida com sucesso.",
-            pdf_url: data.pdf_url || null,
-            xml_url: data.xml_url || null,
-            nfse_key: data.nfse_key || null,
-            invoice_id: data.id,
-          });
+      atualizarProgresso();
+      atualizarMensagemLote();
+    } catch (e) {
+      console.error("Erro ao sincronizar status em massa:", e);
+    } finally {
+      pollingExecutandoRef.current = false;
+    }
+  }
 
-          return "success" as const;
-        }
+  async function dispararProcessamentoFila() {
+    if (processExecutandoRef.current) return;
+    processExecutandoRef.current = true;
 
-        if (statusAtual === "error" || statusAtual === "erro") {
-          atualizarLinha(index, {
-            status: "error",
-            mensagemStatus: data.error_message || "Erro ao emitir nota.",
-            pdf_url: data.pdf_url || null,
-            xml_url: data.xml_url || null,
-            nfse_key: data.nfse_key || null,
-            invoice_id: data.id,
-          });
-          return "error" as const;
-        }
+    try {
+      await fetch("/api/jobs/process", {
+        method: "GET",
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("Erro ao disparar processamento da fila em massa:", error);
+    } finally {
+      processExecutandoRef.current = false;
+    }
+  }
 
-        if (statusAtual === "canceled" || statusAtual === "cancelada") {
-          atualizarLinha(index, {
-            status: "canceled",
-            mensagemStatus: "Emissão cancelada pelo usuário.",
-            invoice_id: data.id,
-          });
-          return "canceled" as const;
-        }
-
-        atualizarLinha(index, {
-          status: "processing",
-          mensagemStatus: "Nota em emissão. Aguarde a conclusão.",
-          pdf_url: data.pdf_url || null,
-          xml_url: data.xml_url || null,
-          nfse_key: data.nfse_key || null,
-          invoice_id: data.id,
-        });
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+  function atualizarProgresso() {
+    const linhasValidas = linhas.filter((linha) => linha.erros.length === 0);
+    if (!linhasValidas.length) {
+      setProgresso(0);
+      return;
     }
 
-    atualizarLinha(index, {
-      status: "processing",
-      mensagemStatus: "A emissão ainda está em processamento. Aguarde mais um pouco.",
-      invoice_id: invoiceId,
-    });
+    const concluidas = linhasValidas.filter((linha) =>
+      ["success", "error", "canceled"].includes(String(linha.status || ""))
+    ).length;
 
-    return "processing" as const;
+    const percentual = Math.round((concluidas / linhasValidas.length) * 100);
+    setProgresso(percentual);
+  }
+
+  function atualizarMensagemLote() {
+    const totalSucesso = linhas.filter((linha) => linha.status === "success").length;
+    const totalProcessando = linhas.filter((linha) =>
+      ["queued", "processing", "pending"].includes(String(linha.status || ""))
+    ).length;
+    const totalErro = linhas.filter((linha) => linha.status === "error").length;
+    const totalCanceladas = linhas.filter((linha) => linha.status === "canceled").length;
+
+    if (totalProcessando > 0) {
+      setMensagem(
+        `${totalSucesso} nota(s) emitida(s). ${totalProcessando} ainda em processamento.`
+      );
+      if (totalErro > 0 || totalCanceladas > 0) {
+        setErro("Algumas linhas não foram concluídas. Verifique a coluna de status.");
+      } else {
+        setErro("");
+      }
+      return;
+    }
+
+    if (totalSucesso > 0) {
+      setMensagem(`${totalSucesso} nota(s) emitida(s) com sucesso.`);
+    }
+
+    if (totalErro > 0 || totalCanceladas > 0) {
+      setErro("Algumas linhas não foram emitidas. Verifique a coluna de status.");
+    } else {
+      setErro("");
+    }
   }
 
   function validarLinha(linha: LinhaPlanilha, index: number): LinhaValidada {
@@ -596,7 +751,9 @@ export default function EmitirMassaPage() {
     setMensagem("Solicitação de cancelamento enviada. Aguarde a atualização das linhas.");
     setErro("");
 
-    const linhasProcessando = linhas.filter((linha) => linha.status === "processing");
+    const linhasProcessando = linhas.filter((linha) =>
+      ["processing", "queued", "pending"].includes(String(linha.status || ""))
+    );
 
     await Promise.all(
       linhasProcessando.map((linha) => solicitarCancelamentoBackend(linha.invoice_id))
@@ -673,6 +830,7 @@ export default function EmitirMassaPage() {
     }
 
     setLoading(true);
+    setProgresso(0);
     canceladoRef.current = false;
 
     try {
@@ -680,7 +838,7 @@ export default function EmitirMassaPage() {
         if (canceladoRef.current) {
           setLinhas((prev) =>
             prev.map((linha, idx) =>
-              idx >= i && linha.status === "pending"
+              idx >= i && ["pending", "queued"].includes(String(linha.status || ""))
                 ? {
                     ...linha,
                     status: "canceled",
@@ -695,11 +853,9 @@ export default function EmitirMassaPage() {
         const linha = linhas[i];
 
         atualizarLinha(i, {
-          status: "processing",
+          status: "queued",
           mensagemStatus: "Preparando emissão...",
         });
-
-        setProgresso(Math.round((i / linhas.length) * 100));
 
         try {
           const cliente = buscarClientePorIdECnpj(linha.client_id, linha.cnpj_emissor);
@@ -749,7 +905,7 @@ export default function EmitirMassaPage() {
 
           atualizarLinha(i, {
             invoice_id: data.id,
-            status: "processing",
+            status: "queued",
             mensagemStatus: "Enviada para emissão. Aguardando processamento...",
           });
 
@@ -822,45 +978,13 @@ export default function EmitirMassaPage() {
               resultadoAutomacao.status ||
               "queued";
 
-            if (
-              statusRetorno === "queued" ||
-              statusRetorno === "pending" ||
-              statusRetorno === "processing"
-            ) {
-              atualizarLinha(i, {
-                status: "processing",
-                mensagemStatus: "Nota em emissão. Aguarde a conclusão.",
-                pdf_url: resultadoAutomacao.invoice?.pdf_url || resultadoAutomacao.pdfUrl || null,
-                xml_url: resultadoAutomacao.invoice?.xml_url || resultadoAutomacao.xmlUrl || null,
-                nfse_key:
-                  resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null,
-                invoice_id: data.id,
-              });
-
-              const resultadoFinal = await acompanharInvoice(i, data.id);
-
-              if (resultadoFinal === "processing") {
-                setMensagem("Existem notas ainda em processamento. Aguarde a conclusão.");
-              }
-            } else if (statusRetorno === "success") {
+            if (statusRetorno === "success") {
               const pdfUrl = resultadoAutomacao.invoice?.pdf_url || resultadoAutomacao.pdfUrl || null;
               const xmlUrl = resultadoAutomacao.invoice?.xml_url || resultadoAutomacao.xmlUrl || null;
               const nfseKey =
                 resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null;
 
-              atualizarLinha(i, {
-                status: "success",
-                mensagemStatus:
-                  resultadoAutomacao.invoice?.error_message
-                    ? "Emitida com aviso."
-                    : "Emitida com sucesso.",
-                pdf_url: pdfUrl,
-                xml_url: xmlUrl,
-                nfse_key: nfseKey,
-                invoice_id: data.id,
-              });
-
-              await hidratarArquivosDaLinha(i, {
+              const linhaAtualizada: LinhaValidada = {
                 ...linha,
                 status: "success",
                 mensagemStatus:
@@ -870,6 +994,26 @@ export default function EmitirMassaPage() {
                 pdf_url: pdfUrl,
                 xml_url: xmlUrl,
                 nfse_key: nfseKey,
+                invoice_id: data.id,
+              };
+
+              atualizarLinha(i, linhaAtualizada);
+              await hidratarArquivosDaLinha(i, linhaAtualizada);
+            } else if (
+              statusRetorno === "queued" ||
+              statusRetorno === "pending" ||
+              statusRetorno === "processing"
+            ) {
+              atualizarLinha(i, {
+                status: statusRetorno === "processing" ? "processing" : "queued",
+                mensagemStatus:
+                  statusRetorno === "processing"
+                    ? "Nota em emissão. Aguarde a conclusão."
+                    : "Nota na fila de emissão. Aguarde a conclusão.",
+                pdf_url: resultadoAutomacao.invoice?.pdf_url || resultadoAutomacao.pdfUrl || null,
+                xml_url: resultadoAutomacao.invoice?.xml_url || resultadoAutomacao.xmlUrl || null,
+                nfse_key:
+                  resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null,
                 invoice_id: data.id,
               });
             } else {
@@ -904,53 +1048,24 @@ export default function EmitirMassaPage() {
           }
         }
 
-        setProgresso(Math.round(((i + 1) / linhas.length) * 100));
+        atualizarProgresso();
       }
 
-      const linhasFinais = await new Promise<LinhaValidada[]>((resolve) => {
-        setLinhas((prev) => {
-          resolve(prev);
-          return prev;
-        });
-      });
-
-      const totalSucesso = linhasFinais.filter((linha) => linha.status === "success").length;
-      const totalEmProcessamento = linhasFinais.filter((linha) => linha.status === "processing").length;
-      const totalErrosEmissao = linhasFinais.filter((linha) => linha.status === "error").length;
-      const totalCanceladas = linhasFinais.filter((linha) => linha.status === "canceled").length;
-
-      if (canceladoRef.current) {
-        setMensagem("Solicitação de cancelamento enviada. As linhas foram atualizadas.");
-        setErro("");
-      } else if (totalEmProcessamento > 0) {
-        setMensagem(
-          `${totalSucesso} nota(s) concluída(s). ${totalEmProcessamento} ainda em processamento.`
-        );
-        setErro(
-          totalErrosEmissao > 0 || totalCanceladas > 0
-            ? "Algumas linhas não foram concluídas. Verifique a coluna de status."
-            : ""
-        );
-      } else {
-        if (totalSucesso > 0) {
-          setMensagem(`${totalSucesso} nota(s) emitida(s) com sucesso.`);
-        }
-
-        if (totalErrosEmissao > 0 || totalCanceladas > 0) {
-          setErro("Algumas linhas não foram emitidas. Verifique a coluna de status.");
-        }
-      }
+      setMensagem("Lotes enviados para processamento. Acompanhe os status abaixo.");
+      void dispararProcessamentoFila();
+      void sincronizarStatusLotes();
     } catch (err) {
       console.error(err);
       setErro("Erro geral ao emitir notas em massa.");
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function gerarZipArquivos() {
     const emitidasComArquivos = linhas.filter(
-      (linha) => linha.status === "success" && (linha.pdfBlob || linha.xmlBlob || linha.pdf_url || linha.xml_url)
+      (linha) =>
+        linha.status === "success" &&
+        (linha.pdfBlob || linha.xmlBlob || linha.pdf_url || linha.xml_url)
     );
 
     if (!emitidasComArquivos.length) {
@@ -1042,7 +1157,10 @@ export default function EmitirMassaPage() {
   );
 
   const totalProcessando = useMemo(
-    () => linhas.filter((linha) => linha.status === "processing").length,
+    () =>
+      linhas.filter((linha) =>
+        ["queued", "processing", "pending"].includes(String(linha.status || ""))
+      ).length,
     [linhas]
   );
 
@@ -1172,7 +1290,7 @@ export default function EmitirMassaPage() {
               </div>
             )}
 
-            {loading && (
+            {(loading || totalProcessando > 0) && (
               <div style={progressCardStyle}>
                 <div style={progressHeaderStyle}>
                   <span>Progresso da emissão em massa</span>
