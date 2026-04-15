@@ -205,7 +205,7 @@ export default function EmitirMassaPage() {
 
   useEffect(() => {
     if (!loadingAccess && authorized) {
-      carregarDadosIniciais();
+      void carregarDadosIniciais();
     }
   }, [loadingAccess, authorized]);
 
@@ -232,13 +232,13 @@ export default function EmitirMassaPage() {
     if (!pollingRef.current) {
       pollingRef.current = window.setInterval(() => {
         void sincronizarStatusLotes();
-      }, 3000);
+      }, 1500);
     }
 
     if (!processRef.current) {
       processRef.current = window.setInterval(() => {
         void dispararProcessamentoFila();
-      }, 4000);
+      }, 1500);
     }
 
     void sincronizarStatusLotes();
@@ -907,6 +907,13 @@ export default function EmitirMassaPage() {
             invoice_id: data.id,
             status: "queued",
             mensagemStatus: "Enviada para emissão. Aguardando processamento...",
+          });
+
+          await fetch("/api/jobs/process", {
+            method: "GET",
+            cache: "no-store",
+          }).catch((errorProcess) => {
+            console.error("Erro ao disparar fila imediatamente:", errorProcess);
           });
 
           if (canceladoRef.current) {
