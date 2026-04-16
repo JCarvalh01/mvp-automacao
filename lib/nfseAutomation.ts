@@ -135,13 +135,13 @@ function erroEhTransitorio(erro: unknown): boolean {
   return errosTransitorios.some((trecho) => msg.includes(trecho));
 }
 
-async function esperarRedeEstabilizar(page: Page, atraso = 800) {
+async function esperarRedeEstabilizar(page: Page, atraso = 600) {
   await page.waitForLoadState("domcontentloaded").catch(() => null);
   await page.waitForLoadState("networkidle").catch(() => null);
   await page.waitForTimeout(atraso);
 }
 
-async function esperarPaginaPronta(page: Page, nomeEtapa: string, atraso = 900) {
+async function esperarPaginaPronta(page: Page, nomeEtapa: string, atraso = 700) {
   console.log(`Aguardando estabilização da etapa: ${nomeEtapa}`);
   await esperarRedeEstabilizar(page, atraso);
 }
@@ -203,14 +203,14 @@ async function preencherCampoComFallback(
       await locator.waitFor({ state: "visible", timeout: TIMEOUT_LONGO });
       await locator.scrollIntoViewIfNeeded().catch(() => null);
       await locator.click({ timeout: TIMEOUT_MEDIO });
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(120);
 
       await locator.press("Control+A").catch(() => null);
       await locator.press("Meta+A").catch(() => null);
       await locator.fill("").catch(() => null);
-      await page.waitForTimeout(120);
+      await page.waitForTimeout(90);
 
-      await locator.type(valor, { delay: 35 });
+      await locator.type(valor, { delay: 30 });
 
       const valorAtual = await locator.inputValue().catch(() => "");
       console.log(`Campo ${nomeCampo} preenchido com seletor ${selector}:`, valorAtual);
@@ -237,7 +237,7 @@ async function clicarComFallback(page: Page, selectors: string[], nome: string) 
 
       await locator.waitFor({ state: "visible", timeout: TIMEOUT_LONGO });
       await locator.scrollIntoViewIfNeeded().catch(() => null);
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(100);
       await locator.click({ timeout: TIMEOUT_MEDIO, force: true });
       console.log(`Clique realizado em ${nome} com seletor: ${selector}`);
       return;
@@ -296,7 +296,7 @@ async function esperarQualquerUm(
       }
     }
 
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(200);
   }
 
   return null;
@@ -358,7 +358,7 @@ async function fecharPossiveisModaisOuAvisos(page: Page) {
   ).catch(() => null);
 
   await page.keyboard.press("Escape").catch(() => null);
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(150);
 }
 
 async function fazerLogin(page: Page, cnpj: string, senha: string) {
@@ -369,7 +369,7 @@ async function fazerLogin(page: Page, cnpj: string, senha: string) {
     timeout: TIMEOUT_MUITO_LONGO,
   });
 
-  await esperarPaginaPronta(page, "login", 1200);
+  await esperarPaginaPronta(page, "login", 700);
   await fecharPossiveisModaisOuAvisos(page);
 
   await preencherCampoComFallback(
@@ -403,7 +403,7 @@ async function fazerLogin(page: Page, cnpj: string, senha: string) {
     "botão Entrar"
   );
 
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(800);
 
   const erroLogin = await page
     .locator('text="Usuário e/ou senha inválidos"')
@@ -426,7 +426,7 @@ async function abrirTelaPessoas(page: Page) {
     timeout: TIMEOUT_MUITO_LONGO,
   });
 
-  await esperarPaginaPronta(page, "Pessoas", 1400);
+  await esperarPaginaPronta(page, "Pessoas", 900);
   await fecharPossiveisModaisOuAvisos(page);
 
   const marcadores = [
@@ -906,7 +906,7 @@ async function preencherEtapaServico(page: Page, input: EmitirNotaInput) {
 }
 
 async function preencherEtapaValores(page: Page, input: EmitirNotaInput) {
-  await esperarPaginaPronta(page, "Valores", 900);
+  await esperarPaginaPronta(page, "Valores", 500);
 
   const valorDigitacao = formatarValorParaDigitacaoNoPortal(input.serviceValue);
   console.log("Valor original recebido:", input.serviceValue);
@@ -935,7 +935,7 @@ async function preencherEtapaValores(page: Page, input: EmitirNotaInput) {
     "opção não reter"
   );
 
-  await page.waitForTimeout(350);
+  await page.waitForTimeout(200);
 
   await clicarComFallback(
     page,
@@ -959,7 +959,7 @@ async function preencherEtapaValores(page: Page, input: EmitirNotaInput) {
     throw new Error("A tela final de prévia da emissão não foi carregada.");
   }
 
-  await esperarPaginaPronta(page, "Prévia da emissão", 1300);
+  await esperarPaginaPronta(page, "Prévia da emissão", 700);
 }
 
 async function salvarDownloadComExtensao(
@@ -988,7 +988,7 @@ async function baixarArquivoPorBotao(
       console.log(`Tentando baixar ${nomeLogico} com seletor: ${selector}`);
 
       const [download] = await Promise.all([
-        page.waitForEvent("download", { timeout: TIMEOUT_LONGO }),
+        page.waitForEvent("download", { timeout: TIMEOUT_MEDIO }),
         botao.click({ force: true }),
       ]);
 
@@ -1035,7 +1035,7 @@ async function localizarBotaoFinalEmitir(page: Page): Promise<Locator> {
 }
 
 async function emitirNotaNaTelaFinal(page: Page) {
-  await esperarPaginaPronta(page, "Tela final antes da emissão", 1800);
+  await esperarPaginaPronta(page, "Tela final antes da emissão", 900);
 
   const marcador = await esperarQualquerUm(
     page,
@@ -1056,7 +1056,7 @@ async function emitirNotaNaTelaFinal(page: Page) {
 
   await botaoFinal.scrollIntoViewIfNeeded().catch(() => null);
   await botaoFinal.waitFor({ state: "visible", timeout: TIMEOUT_LONGO });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(500);
 
   await botaoFinal.click({ timeout: TIMEOUT_LONGO, force: true });
 
@@ -1094,7 +1094,7 @@ async function esperarConclusaoEmissao(page: Page) {
         'text="NFS-e emitidas"',
         'text="A NFS-e foi gerada com sucesso"',
       ],
-      3000
+      1500
     );
 
     if (sucesso) {
@@ -1110,14 +1110,14 @@ async function esperarConclusaoEmissao(page: Page) {
         'text="Tente novamente"',
         'text="Falha"',
       ],
-      1200
+      400
     );
 
     if (mensagemErro) {
       console.log("Mensagem de erro detectada durante conclusão:", mensagemErro);
     }
 
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(350);
   }
 
   throw new Error("A emissão não foi confirmada na tela final.");
@@ -1142,7 +1142,7 @@ async function capturarLinksResultado(page: Page) {
 }
 
 async function capturarChaveOuNumeroNfse(page: Page) {
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 8; i++) {
     const textoPagina = (await page.textContent("body").catch(() => "")) || "";
 
     const match44 = textoPagina.match(/\b\d{44}\b/);
@@ -1160,7 +1160,7 @@ async function capturarChaveOuNumeroNfse(page: Page) {
       return matchNumero[1];
     }
 
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(350);
   }
 
   return null;
