@@ -116,17 +116,28 @@ function parseValorMonetario(valor: string) {
   return Number.isFinite(numero) ? numero : NaN;
 }
 
-function notaFoiGerada(status?: string | null) {
-  const valor = String(status || "").trim().toLowerCase();
-  return valor === "success" || valor === "sucesso";
+function statusNormalizado(status?: string | null) {
+  return String(status || "").trim().toLowerCase();
 }
 
-function getStatusMeta(status?: string | null) {
-  const valor = String(status || "").toLowerCase();
+function notaFoiGerada(status?: string | null, nfseKey?: string | null) {
+  const valor = statusNormalizado(status);
+  return valor === "success" || valor === "sucesso" || Boolean(String(nfseKey || "").trim());
+}
 
-  if (valor.includes("success") || valor.includes("sucesso")) {
+function getStatusMeta(
+  status?: string | null,
+  nfseKey?: string | null,
+  pdfUrl?: string | null,
+  xmlUrl?: string | null
+) {
+  const valor = statusNormalizado(status);
+  const temChave = Boolean(String(nfseKey || "").trim());
+  const temArquivo = Boolean(String(pdfUrl || "").trim() || String(xmlUrl || "").trim());
+
+  if (valor.includes("success") || valor.includes("sucesso") || temChave) {
     return {
-      label: "Emitida com sucesso",
+      label: temArquivo ? "Emitida com sucesso" : "Emitida",
       bg: "#dcfce7",
       border: "#86efac",
       color: "#166534",
@@ -356,7 +367,7 @@ export default function EmitirNotaPage() {
     setSalvando(true);
 
     let tentativas = 0;
-    const maxTentativas = 120;
+    const maxTentativas = 180;
 
     pollingRef.current = setInterval(async () => {
       tentativas += 1;
@@ -396,14 +407,10 @@ export default function EmitirNotaPage() {
 
         setUltimaNota(notaAtualizada);
 
-        const statusAtual = String(data.status || "").toLowerCase();
-
-        if (statusAtual === "success" && (data.pdf_url || data.xml_url)) {
-          pararAcompanhamento();
-          setMensagem("Nota emitida com sucesso!");
-          setTipoMensagem("sucesso");
-          return;
-        }
+        const statusAtual = statusNormalizado(data.status);
+        const temChave = Boolean(String(data.nfse_key || "").trim());
+        const temPdf = Boolean(String(data.pdf_url || "").trim());
+        const temXml = Boolean(String(data.xml_url || "").trim());
 
         if (statusAtual === "error" || statusAtual === "erro") {
           pararAcompanhamento();
@@ -416,6 +423,25 @@ export default function EmitirNotaPage() {
           pararAcompanhamento();
           setMensagem("Emissão cancelada.");
           setTipoMensagem("aviso");
+          return;
+        }
+
+        if (
+          statusAtual === "success" ||
+          statusAtual === "sucesso" ||
+          temChave ||
+          temPdf ||
+          temXml
+        ) {
+          pararAcompanhamento();
+
+          if (temPdf || temXml) {
+            setMensagem("Nota emitida com sucesso!");
+          } else {
+            setMensagem("Nota emitida com sucesso. PDF/XML ainda estão sendo liberados.");
+          }
+
+          setTipoMensagem("sucesso");
           return;
         }
 
@@ -435,10 +461,15 @@ export default function EmitirNotaPage() {
     }, 2000);
   }
 
-  const statusMeta = getStatusMeta(ultimaNota?.status);
-  const notaGerada = notaFoiGerada(ultimaNota?.status);
-  const podeAbrirPdf = Boolean(notaGerada && ultimaNota?.pdf_url);
-  const podeAbrirXml = Boolean(notaGerada && ultimaNota?.xml_url);
+  const statusMeta = getStatusMeta(
+    ultimaNota?.status,
+    ultimaNota?.nfse_key,
+    ultimaNota?.pdf_url,
+    ultimaNota?.xml_url
+  );
+  const notaGerada = notaFoiGerada(ultimaNota?.status, ultimaNota?.nfse_key);
+  const podeAbrirPdf = Boolean(ultimaNota?.pdf_url);
+  const podeAbrirXml = Boolean(ultimaNota?.xml_url);
   const exibindoProcessamento = salvando || acompanhandoNota;
 
   function validarFormulario() {
@@ -525,10 +556,8 @@ export default function EmitirNotaPage() {
   }
 
   function baixarPDF() {
-    if (!ultimaNota) return;
-
-    if (!notaFoiGerada(ultimaNota.status) || !ultimaNota.pdf_url) {
-      alert("PDF ainda não disponível. Aguarde a conclusão da emissão da nota.");
+    if (!ultimaNota?.pdf_url) {
+      alert("PDF ainda não disponível. Aguarde a liberação do arquivo.");
       return;
     }
 
@@ -536,10 +565,8 @@ export default function EmitirNotaPage() {
   }
 
   function baixarXML() {
-    if (!ultimaNota) return;
-
-    if (!notaFoiGerada(ultimaNota.status) || !ultimaNota.xml_url) {
-      alert("XML ainda não disponível. Aguarde a conclusão da emissão da nota.");
+    if (!ultimaNota?.xml_url) {
+      alert("XML ainda não disponível. Aguarde a liberação do arquivo.");
       return;
     }
 
@@ -675,6 +702,22 @@ export default function EmitirNotaPage() {
         setTipoMensagem("aviso");
         resetarFormularioAposEnvio();
         await iniciarAcompanhamentoNota(resultadoAutomacao.invoice?.id || data.id, notaEmitida);
+        return;
+      }
+
+      if (
+        notaEmitida.nfse_key ||
+        statusNormalizado(notaEmitida.status) === "success" ||
+        statusNormalizado(notaEmitida.status) === "sucesso"
+      ) {
+        if (notaEmitida.pdf_url || notaEmitida.xml_url) {
+          setMensagem("Nota emitida com sucesso!");
+        } else {
+          setMensagem("Nota emitida com sucesso. PDF/XML ainda estão sendo liberados.");
+        }
+        setTipoMensagem("sucesso");
+        resetarFormularioAposEnvio();
+        setSalvando(false);
         return;
       }
 
@@ -1031,6 +1074,12 @@ export default function EmitirNotaPage() {
                   {!notaGerada && (
                     <div style={resultPendingFilesStyle}>
                       Os arquivos serão liberados somente após a nota ser gerada.
+                    </div>
+                  )}
+
+                  {notaGerada && !podeAbrirPdf && !podeAbrirXml && (
+                    <div style={resultPendingFilesStyle}>
+                      A nota já foi emitida. PDF/XML ainda estão sendo liberados.
                     </div>
                   )}
                 </div>

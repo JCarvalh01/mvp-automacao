@@ -727,7 +727,7 @@ export async function POST(request: Request) {
     if (jobAtivo) {
       await marcarInvoiceQueued(invoiceId);
 
-      void dispararProcessamentoFilaEmBackground();
+      await dispararProcessamentoFilaEmBackground();
 
       return NextResponse.json(
         {
