@@ -154,7 +154,7 @@ export default function AdminClienteDetalhePage() {
   const router = useRouter();
   const params = useParams();
   const { isLoading: loadingAccess, isAuthorized: authorized } =
-    useProtectedRoute(["admin"]);
+    useProtectedRoute();
 
   const clienteId = Number(params?.id);
 
