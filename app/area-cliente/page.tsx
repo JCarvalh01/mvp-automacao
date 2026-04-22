@@ -120,7 +120,10 @@ function getStatusMeta(status?: string | null) {
   };
 }
 
-function getPlanoLabel(planType?: string | null, partnerCompanyId?: number | null) {
+function getPlanoLabel(
+  planType?: string | null,
+  partnerCompanyId?: number | null
+) {
   if (partnerCompanyId) return "Via empresa";
 
   const plano = String(planType || "").toLowerCase();
@@ -170,44 +173,51 @@ export default function AreaClientePage() {
       const { data: clienteDb, error: clienteDbError } = await supabase
         .from("clients")
         .select(
-          "plan_type, notes_limit, is_blocked, subscription_status, partner_company_id, is_active"
+          "id, name, email, cnpj, phone, address, password, client_type, mei_created_at, is_active, partner_company_id, plan_type, notes_limit, is_blocked, subscription_status"
         )
         .eq("id", session.id)
         .single();
 
-      if (clienteDbError) {
+      if (clienteDbError || !clienteDb) {
         console.error("Erro ao buscar dados do cliente:", clienteDbError);
-      }
-
-      const clienteComPlano: ClienteSession = {
-        ...session,
-        plan_type: clienteDb?.plan_type || null,
-        notes_limit: clienteDb?.notes_limit ?? 0,
-        is_blocked: clienteDb?.is_blocked ?? false,
-        subscription_status: clienteDb?.subscription_status ?? null,
-        partner_company_id:
-          clienteDb?.partner_company_id ?? session.partner_company_id ?? null,
-        is_active: clienteDb?.is_active ?? session.is_active,
-      };
-
-      setCliente(clienteComPlano);
-
-      localStorage.setItem("client", JSON.stringify(clienteComPlano));
-
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("client_id", session.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Erro ao buscar notas do cliente:", error);
         setErro("Não foi possível carregar seus dados no momento.");
         setNotas([]);
         return;
       }
 
-      setNotas(data || []);
+      const clienteComPlano: ClienteSession = {
+        id: clienteDb.id,
+        name: clienteDb.name || session.name,
+        email: clienteDb.email || session.email,
+        cnpj: clienteDb.cnpj || session.cnpj,
+        phone: clienteDb.phone || session.phone,
+        address: clienteDb.address || session.address,
+        password: clienteDb.password || session.password || null,
+        client_type: clienteDb.client_type || session.client_type || "mei",
+        mei_created_at: clienteDb.mei_created_at || session.mei_created_at || null,
+        plan_type: clienteDb.plan_type || null,
+        notes_limit: clienteDb.notes_limit ?? 0,
+        is_blocked: clienteDb.is_blocked ?? false,
+        subscription_status: clienteDb.subscription_status ?? null,
+        partner_company_id: clienteDb.partner_company_id ?? null,
+        is_active: clienteDb.is_active ?? true,
+      };
+
+      setCliente(clienteComPlano);
+      localStorage.setItem("client", JSON.stringify(clienteComPlano));
+
+      const { data: notasDb, error: notasError } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("client_id", clienteComPlano.id)
+        .order("created_at", { ascending: false });
+
+      if (notasError) {
+        console.error("Erro ao buscar notas do cliente:", notasError);
+        setNotas([]);
+      } else {
+        setNotas(notasDb || []);
+      }
     } catch (error) {
       console.error("Erro inesperado ao carregar área do cliente:", error);
       setErro("Ocorreu um erro inesperado ao carregar a área do cliente.");
@@ -217,7 +227,7 @@ export default function AreaClientePage() {
     }
   }
 
-  function abrirArquivo(url: string | null, tipo: "PDF" | "XML") {
+  function abrirArquivo(url: string | null) {
     if (!url) return;
     window.open(url, "_blank");
   }
@@ -856,7 +866,7 @@ export default function AreaClientePage() {
                     >
                       <button
                         type="button"
-                        onClick={() => abrirArquivo(nota.pdf_url || null, "PDF")}
+                        onClick={() => abrirArquivo(nota.pdf_url || null)}
                         disabled={!pdfDisponivel}
                         style={{
                           ...(pdfDisponivel
@@ -873,7 +883,7 @@ export default function AreaClientePage() {
 
                       <button
                         type="button"
-                        onClick={() => abrirArquivo(nota.xml_url || null, "XML")}
+                        onClick={() => abrirArquivo(nota.xml_url || null)}
                         disabled={!xmlDisponivel}
                         style={{
                           ...(xmlDisponivel
