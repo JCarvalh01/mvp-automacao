@@ -153,7 +153,8 @@ function getStatusMeta(status?: string | null, errorMessage?: string | null) {
 export default function AdminClienteDetalhePage() {
   const router = useRouter();
   const params = useParams();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["admin"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } =
+    useProtectedRoute(["admin"]);
 
   const clienteId = Number(params?.id);
 
@@ -210,7 +211,9 @@ export default function AdminClienteDetalhePage() {
 
       const { data: notasData, error: notasError } = await supabase
         .from("invoices")
-        .select("id, created_at, competency_date, service_value, status, error_message, nfse_key")
+        .select(
+          "id, created_at, competency_date, service_value, status, error_message, nfse_key"
+        )
         .eq("client_id", clienteAtual.id)
         .order("created_at", { ascending: false });
 
@@ -294,7 +297,8 @@ export default function AdminClienteDetalhePage() {
               <p style={heroMiniStyle}>MVP_ AUTOMAÇÃO FISCAL</p>
               <h1 style={heroTitleStyle}>{cliente?.name || "Cliente"}</h1>
               <p style={heroSubtitleStyle}>
-                Visão administrativa do cliente, dados cadastrais, vínculo com empresa e histórico operacional.
+                Visão administrativa do cliente, dados cadastrais, vínculo com
+                empresa e histórico operacional.
               </p>
             </div>
 
@@ -345,7 +349,9 @@ export default function AdminClienteDetalhePage() {
 
           <div style={summaryCardStyle}>
             <span style={summaryLabelStyle}>Faturamento validado</span>
-            <strong style={summaryValueStyle}>{formatarMoeda(resumo.faturamento)}</strong>
+            <strong style={summaryValueStyle}>
+              {formatarMoeda(resumo.faturamento)}
+            </strong>
           </div>
         </section>
 
@@ -498,11 +504,16 @@ export default function AdminClienteDetalhePage() {
           </div>
 
           {notas.length === 0 ? (
-            <div style={emptyStyle}>Nenhuma nota encontrada para este cliente.</div>
+            <div style={emptyStyle}>
+              Nenhuma nota encontrada para este cliente.
+            </div>
           ) : (
             <div style={notesListStyle}>
               {notas.slice(0, 10).map((nota) => {
-                const statusMeta = getStatusMeta(nota.status, nota.error_message);
+                const statusMeta = getStatusMeta(
+                  nota.status,
+                  nota.error_message
+                );
 
                 return (
                   <article key={nota.id} style={noteCardStyle}>
@@ -547,8 +558,12 @@ export default function AdminClienteDetalhePage() {
 
                     {nota.error_message ? (
                       <div style={invoiceMessageBoxStyle}>
-                        <span style={invoiceMessageTitleStyle}>Detalhe operacional</span>
-                        <p style={invoiceMessageTextStyle}>{nota.error_message}</p>
+                        <span style={invoiceMessageTitleStyle}>
+                          Detalhe operacional
+                        </span>
+                        <p style={invoiceMessageTextStyle}>
+                          {nota.error_message}
+                        </p>
                       </div>
                     ) : null}
                   </article>
