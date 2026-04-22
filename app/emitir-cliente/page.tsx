@@ -20,6 +20,7 @@ type Empresa = {
 
 type Cliente = {
   id: number;
+  user_id?: number | null;
   name: string;
   cnpj: string;
   email: string;
@@ -296,7 +297,7 @@ export default function EmitirClientePage() {
       const { data: clienteData, error: clienteError } = await supabase
         .from("clients")
         .select("*")
-        .eq("id", clienteSessao.id)
+        .eq("user_id", clienteSessao.id)
         .single();
 
       if (clienteError || !clienteData) {
@@ -308,6 +309,7 @@ export default function EmitirClientePage() {
       }
 
       setCliente(clienteData as Cliente);
+      localStorage.setItem("client", JSON.stringify(clienteData));
 
       if (!clienteData.partner_company_id) {
         setEmpresa(null);
