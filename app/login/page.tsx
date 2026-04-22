@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getClientSession, getUserSession } from "@/lib/session";
+import { getClientSession } from "@/lib/session";
 import ProtectedPageLoader from "@/components/ProtectedPageLoader";
 
 type ClienteSession = {
@@ -165,42 +165,28 @@ export default function AreaClientePage() {
       setErro("");
 
       const session = getClientSession();
-      const userSession = getUserSession();
 
-      if (!session?.id && !userSession?.id && !session?.email) {
+      if (!session || !session.id) {
         window.location.href = "/login";
         return;
       }
 
-      let clienteDb: any = null;
-      let clienteDbError: any = null;
-
       const selectCliente =
         "id, user_id, name, email, cnpj, phone, address, password, client_type, mei_created_at, is_active, partner_company_id, plan_type, notes_limit, is_blocked, subscription_status";
 
-      if (session?.id) {
-        const resultadoPorId = await supabase
-          .from("clients")
-          .select(selectCliente)
-          .eq("id", session.id)
-          .maybeSingle();
+      let clienteDb: any = null;
+      let clienteDbError: any = null;
 
-        clienteDb = resultadoPorId.data;
-        clienteDbError = resultadoPorId.error;
-      }
+      const resultadoPorId = await supabase
+        .from("clients")
+        .select(selectCliente)
+        .eq("id", session.id)
+        .maybeSingle();
 
-      if (!clienteDb && userSession?.id) {
-        const resultadoPorUserId = await supabase
-          .from("clients")
-          .select(selectCliente)
-          .eq("user_id", userSession.id)
-          .maybeSingle();
+      clienteDb = resultadoPorId.data;
+      clienteDbError = resultadoPorId.error;
 
-        clienteDb = resultadoPorUserId.data;
-        clienteDbError = resultadoPorUserId.error;
-      }
-
-      if (!clienteDb && session?.email) {
+      if (!clienteDb && session.email) {
         const resultadoPorEmail = await supabase
           .from("clients")
           .select(selectCliente)
@@ -220,15 +206,15 @@ export default function AreaClientePage() {
 
       const clienteComPlano: ClienteSession = {
         id: clienteDb.id,
-        user_id: clienteDb.user_id ?? userSession?.id ?? null,
-        name: clienteDb.name || session?.name || userSession?.name || "Cliente",
-        email: clienteDb.email || session?.email || userSession?.email || "",
-        cnpj: clienteDb.cnpj || session?.cnpj || "",
-        phone: clienteDb.phone || session?.phone || "",
-        address: clienteDb.address || session?.address || "",
-        password: clienteDb.password || session?.password || null,
-        client_type: clienteDb.client_type || session?.client_type || "mei",
-        mei_created_at: clienteDb.mei_created_at || session?.mei_created_at || null,
+        user_id: clienteDb.user_id ?? session.user_id ?? null,
+        name: clienteDb.name || session.name || "Cliente",
+        email: clienteDb.email || session.email || "",
+        cnpj: clienteDb.cnpj || session.cnpj || "",
+        phone: clienteDb.phone || session.phone || "",
+        address: clienteDb.address || session.address || "",
+        password: clienteDb.password || session.password || null,
+        client_type: clienteDb.client_type || session.client_type || "mei",
+        mei_created_at: clienteDb.mei_created_at || session.mei_created_at || null,
         plan_type: clienteDb.plan_type || null,
         notes_limit: clienteDb.notes_limit ?? 0,
         is_blocked: clienteDb.is_blocked ?? false,
