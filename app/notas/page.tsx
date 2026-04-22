@@ -221,7 +221,7 @@ function isDateInRange(
 }
 
 export default function NotasPage() {
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [notas, setNotas] = useState<Nota[]>([]);

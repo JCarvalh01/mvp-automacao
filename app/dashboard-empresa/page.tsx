@@ -211,7 +211,7 @@ function getAnoMesCompetencia(value: string | null | undefined) {
 
 export default function DashboardEmpresaPage() {
   const router = useRouter();
-  const { loading: routeLoading, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: routeLoading, isAuthorized: authorized } = useProtectedRoute();
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [loading, setLoading] = useState(true);

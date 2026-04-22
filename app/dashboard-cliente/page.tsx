@@ -68,7 +68,7 @@ type ClienteLocal = {
 
 export default function DashboardClientePage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["client"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [cliente, setCliente] = useState<ClienteLocal | null>(null);
   const [dashboard, setDashboard] =

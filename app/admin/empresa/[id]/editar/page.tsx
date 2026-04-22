@@ -24,7 +24,7 @@ type Empresa = {
 export default function EditarEmpresaPage() {
   const router = useRouter();
   const params = useParams();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["admin"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const empresaId = Number(params?.id);
 

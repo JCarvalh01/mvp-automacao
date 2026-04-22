@@ -60,7 +60,7 @@ function parseMoney(value: string) {
 
 export default function NovaEmpresaPage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["admin"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [nome, setNome] = useState("");
   const [cnpj, setCnpj] = useState("");

@@ -45,7 +45,7 @@ type ClientsCountMap = Record<number, number>;
 
 export default function AdminPage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["admin"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [clientsCountMap, setClientsCountMap] = useState<ClientsCountMap>({});

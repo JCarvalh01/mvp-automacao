@@ -241,7 +241,7 @@ function getPlanoTexto(cliente: Cliente | null) {
 
 export default function EmitirClientePage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["client"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);

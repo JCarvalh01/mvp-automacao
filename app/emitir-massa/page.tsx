@@ -185,7 +185,7 @@ function getTodayLocalDate() {
 }
 
 export default function EmitirMassaPage() {
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);

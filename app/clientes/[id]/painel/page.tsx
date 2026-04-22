@@ -224,7 +224,7 @@ function getMeiPill(isMei?: boolean | null) {
 export default function ClientePainelPage() {
   const router = useRouter();
   const params = useParams();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const clienteId = Number(params?.id);
 

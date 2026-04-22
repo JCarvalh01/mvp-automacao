@@ -38,7 +38,7 @@ function formatarTelefoneVisual(valor: string) {
 
 export default function NovoClientePage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
 
   const [name, setName] = useState("");
   const [cnpj, setCnpj] = useState("");

@@ -198,7 +198,7 @@ function getStatusMeta(
 }
 
 export default function EmitirNotaPage() {
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const [clientIdFromUrl, setClientIdFromUrl] = useState("");
