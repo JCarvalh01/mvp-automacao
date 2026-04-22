@@ -165,6 +165,79 @@ export default function LoginPage() {
     };
   }
 
+  async function buscarClienteDoUsuario(usuario: Usuario) {
+    const emailNormalizado = (usuario.email || "").trim().toLowerCase();
+
+    const { data: clientesPorUserId, error: clientePorUserIdError } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("user_id", usuario.id);
+
+    console.log("Resultado clients por user_id:", {
+      usuarioId: usuario.id,
+      clientesPorUserId,
+      clientePorUserIdError,
+    });
+
+    if (clientePorUserIdError) {
+      return {
+        cliente: null,
+        erro: `Erro ao buscar cliente por vínculo do usuário: ${clientePorUserIdError.message}`,
+      };
+    }
+
+    if (clientesPorUserId && clientesPorUserId.length === 1) {
+      return {
+        cliente: clientesPorUserId[0] as Cliente,
+        erro: "",
+      };
+    }
+
+    if (clientesPorUserId && clientesPorUserId.length > 1) {
+      return {
+        cliente: null,
+        erro: "Mais de um cliente vinculado a este usuário.",
+      };
+    }
+
+    const { data: clientesPorEmail, error: clientePorEmailError } = await supabase
+      .from("clients")
+      .select("*")
+      .ilike("email", emailNormalizado);
+
+    console.log("Resultado clients por email:", {
+      email: emailNormalizado,
+      clientesPorEmail,
+      clientePorEmailError,
+    });
+
+    if (clientePorEmailError) {
+      return {
+        cliente: null,
+        erro: `Erro ao buscar cliente por email: ${clientePorEmailError.message}`,
+      };
+    }
+
+    if (!clientesPorEmail || clientesPorEmail.length === 0) {
+      return {
+        cliente: null,
+        erro: "Cliente vinculado não encontrado.",
+      };
+    }
+
+    if (clientesPorEmail.length > 1) {
+      return {
+        cliente: null,
+        erro: "Mais de um cliente encontrado com este email.",
+      };
+    }
+
+    return {
+      cliente: clientesPorEmail[0] as Cliente,
+      erro: "",
+    };
+  }
+
   async function fazerLogin(e: React.FormEvent) {
     e.preventDefault();
 
@@ -254,36 +327,15 @@ export default function LoginPage() {
         }
 
         if (tipoUsuarioNormalizado === "client") {
-          const { data: clientes, error: clienteError } = await supabase
-            .from("clients")
-            .select("*")
-            .ilike("email", usuario.email);
+          const resultadoCliente = await buscarClienteDoUsuario(usuario);
 
-          console.log("Resultado clients por email:", {
-            email: usuario.email,
-            clientes,
-            clienteError,
-          });
-
-          if (clienteError) {
+          if (!resultadoCliente.cliente) {
             clearAllSessions();
-            setMensagem(`Erro ao buscar cliente: ${clienteError.message}`);
+            setMensagem(resultadoCliente.erro || "Cliente vinculado não encontrado.");
             return;
           }
 
-          if (!clientes || clientes.length === 0) {
-            clearAllSessions();
-            setMensagem("Cliente vinculado não encontrado.");
-            return;
-          }
-
-          if (clientes.length > 1) {
-            clearAllSessions();
-            setMensagem("Mais de um cliente encontrado com este email.");
-            return;
-          }
-
-          const cliente = clientes[0] as Cliente;
+          const cliente = resultadoCliente.cliente;
 
           if (cliente.is_active === false) {
             clearAllSessions();
@@ -293,8 +345,8 @@ export default function LoginPage() {
 
           saveClientSession({
             id: cliente.id,
-            name: cliente.name,
-            email: cliente.email || "",
+            name: cliente.name || usuario.name,
+            email: cliente.email || usuario.email || "",
             cnpj: cliente.cnpj || "",
             phone: cliente.phone || "",
             address: cliente.address || "",
@@ -358,7 +410,7 @@ export default function LoginPage() {
       }
 
       saveUserSession({
-        id: clienteDireto.id,
+        id: clienteDireto.user_id ?? clienteDireto.id,
         name: clienteDireto.name,
         email: clienteDireto.email || emailNormalizado,
         user_type: "client",
