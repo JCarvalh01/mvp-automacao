@@ -367,7 +367,7 @@ export default function EmitirNotaPage() {
     setSalvando(true);
 
     let tentativas = 0;
-    const maxTentativas = 180;
+    const maxTentativas = 120;
 
     pollingRef.current = setInterval(async () => {
       tentativas += 1;
@@ -437,13 +437,17 @@ export default function EmitirNotaPage() {
 
           if (temPdf || temXml) {
             setMensagem("Nota emitida com sucesso!");
+            setTipoMensagem("sucesso");
           } else {
             setMensagem("Nota emitida com sucesso. PDF/XML ainda estão sendo liberados.");
+            setTipoMensagem("aviso");
           }
 
-          setTipoMensagem("sucesso");
           return;
         }
+
+        setMensagem("Emitindo nota fiscal... aguarde a conclusão.");
+        setTipoMensagem("aviso");
 
         if (tentativas >= maxTentativas) {
           pararAcompanhamento();
@@ -452,6 +456,7 @@ export default function EmitirNotaPage() {
         }
       } catch (error) {
         console.log("Erro ao acompanhar nota:", error);
+
         if (tentativas >= maxTentativas) {
           pararAcompanhamento();
           setMensagem("Erro ao acompanhar a emissão da nota.");
@@ -619,7 +624,27 @@ export default function EmitirNotaPage() {
         return;
       }
 
-      const respostaAutomacao = await fetch("/api/emitir-nota", {
+      const notaBase: UltimaNota = {
+        id: data.id,
+        competency_date: competencyDate,
+        service_taker: tomadorFinal,
+        tax_code: taxCode.trim(),
+        service_city: serviceCity.trim(),
+        service_value: valorFinal,
+        service_description: descricaoFinal,
+        pdf_url: null,
+        xml_url: null,
+        nfse_key: null,
+        status: "queued",
+        error_message: null,
+      };
+
+      setUltimaNota(notaBase);
+      setMensagem("Emitindo nota fiscal... aguarde a conclusão.");
+      setTipoMensagem("aviso");
+      resetarFormularioAposEnvio();
+
+      fetch("/api/emitir-nota", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -636,108 +661,60 @@ export default function EmitirNotaPage() {
           serviceDescription: descricaoFinal,
           cancelKey: String(data.id),
         }),
-      });
+      })
+        .then(async (res) => {
+          const resultadoAutomacao: ApiEmitirResponse | null = await res
+            .json()
+            .catch(() => null);
 
-      const resultadoAutomacao: ApiEmitirResponse = await respostaAutomacao.json();
+          if (!resultadoAutomacao) return;
 
-      if (!respostaAutomacao.ok || !resultadoAutomacao.success) {
-        const notaEmitidaComErro: UltimaNota = {
-          id: data.id,
-          competency_date: competencyDate,
-          service_taker: tomadorFinal,
-          tax_code: taxCode.trim(),
-          service_city: serviceCity.trim(),
-          service_value: valorFinal,
-          service_description: descricaoFinal,
-          pdf_url: resultadoAutomacao.invoice?.pdf_url || null,
-          xml_url: resultadoAutomacao.invoice?.xml_url || null,
-          nfse_key: resultadoAutomacao.invoice?.nfse_key || null,
-          status: resultadoAutomacao.invoice?.status || "error",
-          error_message:
-            resultadoAutomacao.invoice?.error_message ||
-            resultadoAutomacao.message ||
-            resultadoAutomacao.error ||
-            "Erro na automação.",
-        };
+          const notaRetorno: UltimaNota = {
+            id: resultadoAutomacao.invoice?.id || data.id,
+            competency_date: competencyDate,
+            service_taker: tomadorFinal,
+            tax_code: taxCode.trim(),
+            service_city: serviceCity.trim(),
+            service_value: valorFinal,
+            service_description: descricaoFinal,
+            pdf_url:
+              resultadoAutomacao.invoice?.pdf_url ||
+              resultadoAutomacao.pdfUrl ||
+              null,
+            xml_url:
+              resultadoAutomacao.invoice?.xml_url ||
+              resultadoAutomacao.xmlUrl ||
+              null,
+            nfse_key:
+              resultadoAutomacao.invoice?.nfse_key ||
+              resultadoAutomacao.nfseKey ||
+              null,
+            status:
+              resultadoAutomacao.invoice?.status ||
+              resultadoAutomacao.status ||
+              "queued",
+            error_message:
+              resultadoAutomacao.invoice?.error_message ||
+              resultadoAutomacao.message ||
+              resultadoAutomacao.error ||
+              null,
+          };
 
-        setUltimaNota(notaEmitidaComErro);
-        setMensagem(
-          resultadoAutomacao.message ||
-            resultadoAutomacao.error ||
-            "Não foi possível concluir a emissão."
-        );
-        setTipoMensagem(resultadoAutomacao.canceled ? "aviso" : "erro");
-        setSalvando(false);
-        return;
-      }
+          setUltimaNota((atual) => ({
+            ...(atual || notaBase),
+            ...notaRetorno,
+          }));
+        })
+        .catch((fetchError) => {
+          console.log("Erro ao chamar /api/emitir-nota:", fetchError);
+        });
 
-      const statusRetorno =
-        resultadoAutomacao.invoice?.status ||
-        resultadoAutomacao.status ||
-        "queued";
-
-      const notaEmitida: UltimaNota = {
-        id: resultadoAutomacao.invoice?.id || data.id,
-        competency_date: competencyDate,
-        service_taker: tomadorFinal,
-        tax_code: taxCode.trim(),
-        service_city: serviceCity.trim(),
-        service_value: valorFinal,
-        service_description: descricaoFinal,
-        pdf_url: resultadoAutomacao.invoice?.pdf_url || resultadoAutomacao.pdfUrl || null,
-        xml_url: resultadoAutomacao.invoice?.xml_url || resultadoAutomacao.xmlUrl || null,
-        nfse_key: resultadoAutomacao.invoice?.nfse_key || resultadoAutomacao.nfseKey || null,
-        status: statusRetorno,
-        error_message: resultadoAutomacao.invoice?.error_message || null,
-      };
-
-      setUltimaNota(notaEmitida);
-
-      if (
-        statusRetorno === "queued" ||
-        statusRetorno === "pending" ||
-        statusRetorno === "processing"
-      ) {
-        setMensagem("Emitindo nota fiscal... aguarde a conclusão.");
-        setTipoMensagem("aviso");
-        resetarFormularioAposEnvio();
-        await iniciarAcompanhamentoNota(resultadoAutomacao.invoice?.id || data.id, notaEmitida);
-        return;
-      }
-
-      if (
-        notaEmitida.nfse_key ||
-        statusNormalizado(notaEmitida.status) === "success" ||
-        statusNormalizado(notaEmitida.status) === "sucesso"
-      ) {
-        if (notaEmitida.pdf_url || notaEmitida.xml_url) {
-          setMensagem("Nota emitida com sucesso!");
-        } else {
-          setMensagem("Nota emitida com sucesso. PDF/XML ainda estão sendo liberados.");
-        }
-        setTipoMensagem("sucesso");
-        resetarFormularioAposEnvio();
-        setSalvando(false);
-        return;
-      }
-
-      if (notaEmitida.error_message) {
-        setMensagem("Nota emitida, mas houve um aviso no processamento.");
-        setTipoMensagem("aviso");
-      } else {
-        setMensagem("Nota emitida com sucesso!");
-        setTipoMensagem("sucesso");
-      }
-
-      resetarFormularioAposEnvio();
+      await iniciarAcompanhamentoNota(data.id, notaBase);
     } catch (error) {
       console.log(error);
       setMensagem("Erro inesperado ao emitir a nota.");
       setTipoMensagem("erro");
-    } finally {
-      if (!acompanhandoNota) {
-        setSalvando(false);
-      }
+      setSalvando(false);
     }
   }
 
