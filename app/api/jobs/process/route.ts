@@ -59,6 +59,7 @@ const STALE_JOB_MINUTES = 8;
 const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
 const STORAGE_BUCKET = "nfse-files";
 const NFSE_PORTAL_BASE_URL = "https://www.nfse.gov.br";
+const MAX_PARALLEL_JOBS = 2;
 
 function getSenhaEmissor(cliente: ClientRow) {
   return String(cliente.emissor_password || cliente.password || "").trim();
@@ -400,21 +401,20 @@ async function liberarJobsTravados() {
   return lista.length;
 }
 
-async function buscarProximoJob(): Promise<InvoiceJob | null> {
+async function buscarJobsPendentes(limit = MAX_PARALLEL_JOBS): Promise<InvoiceJob[]> {
   const { data, error } = await supabaseAdmin
     .from("invoice_jobs")
     .select("*")
     .eq("status", "queued")
     .eq("job_type", "emit_nfse")
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(limit);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data as InvoiceJob | null) || null;
+  return (data as InvoiceJob[] | null) || [];
 }
 
 async function travarJob(jobId: number) {
@@ -730,133 +730,119 @@ async function processarJob(job: InvoiceJob) {
   };
 }
 
-async function executarFila() {
-  const recuperados = await liberarJobsTravados();
+async function processarJobComResultado(job: InvoiceJob) {
+  const travado = await travarJob(job.id);
 
-  let processedCount = 0;
-  let successCount = 0;
-  let errorCount = 0;
-  let canceledCount = 0;
-  const resultados: any[] = [];
+  if (!travado) {
+    return null;
+  }
 
-  while (true) {
-    const job = await buscarProximoJob();
+  const agora = new Date().toISOString();
 
-    if (!job) {
-      break;
-    }
+  const jobAtualizado: InvoiceJob = {
+    ...job,
+    status: "processing",
+    locked_at: agora,
+    started_at: job.started_at || agora,
+  };
 
-    const travado = await travarJob(job.id);
+  const attemptsAtual = await incrementarTentativa(jobAtualizado);
 
-    if (!travado) {
-      continue;
-    }
+  const jobComTentativa: InvoiceJob = {
+    ...jobAtualizado,
+    attempts: attemptsAtual,
+  };
 
-    const agora = new Date().toISOString();
+  try {
+    const resultado = await processarJob(jobComTentativa);
 
-    const jobAtualizado: InvoiceJob = {
-      ...job,
-      status: "processing",
-      locked_at: agora,
-      started_at: job.started_at || agora,
-    };
-
-    const attemptsAtual = await incrementarTentativa(jobAtualizado);
-
-    const jobComTentativa: InvoiceJob = {
-      ...jobAtualizado,
-      attempts: attemptsAtual,
-    };
-
-    try {
-      const resultado = await processarJob(jobComTentativa);
-
-      processedCount += 1;
-
-      if (resultado?.canceled) {
-        canceledCount += 1;
-      } else if (resultado?.success) {
-        successCount += 1;
-      }
-
-      resultados.push({
+    return {
+      processed: 1,
+      success: resultado?.success ? 1 : 0,
+      error: 0,
+      canceled: resultado?.canceled ? 1 : 0,
+      resultado: {
         jobId: jobComTentativa.id,
         invoiceId: jobComTentativa.invoice_id,
         success: Boolean(resultado?.success),
         canceled: Boolean(resultado?.canceled),
         message: resultado?.message || null,
         result: resultado?.result || null,
-      });
-    } catch (error: any) {
-      const mensagemErro = String(error?.message || "Erro ao processar job.");
+      },
+    };
+  } catch (error: any) {
+    const mensagemErro = String(error?.message || "Erro ao processar job.");
 
-      await logJob({
-        jobId: jobComTentativa.id,
-        invoiceId: jobComTentativa.invoice_id,
-        level: "error",
-        message: "Erro ao processar job.",
-        meta: {
-          error: mensagemErro,
-          attempt: jobComTentativa.attempts,
-        },
-      });
+    await logJob({
+      jobId: jobComTentativa.id,
+      invoiceId: jobComTentativa.invoice_id,
+      level: "error",
+      message: "Erro ao processar job.",
+      meta: {
+        error: mensagemErro,
+        attempt: jobComTentativa.attempts,
+      },
+    });
 
-      if (
-        mensagemErro.includes("EMISSAO_CANCELADA_USUARIO") ||
-        mensagemErro.includes("cancelada pelo usuário")
-      ) {
-        await atualizarInvoiceParaCancelada(
-          jobComTentativa.invoice_id,
-          "Emissão cancelada pelo usuário."
-        );
+    if (
+      mensagemErro.includes("EMISSAO_CANCELADA_USUARIO") ||
+      mensagemErro.includes("cancelada pelo usuário")
+    ) {
+      await atualizarInvoiceParaCancelada(
+        jobComTentativa.invoice_id,
+        "Emissão cancelada pelo usuário."
+      );
 
-        await finalizarJobCancelado(
-          jobComTentativa.id,
-          "Emissão cancelada pelo usuário."
-        );
+      await finalizarJobCancelado(
+        jobComTentativa.id,
+        "Emissão cancelada pelo usuário."
+      );
 
-        processedCount += 1;
-        canceledCount += 1;
-
-        resultados.push({
+      return {
+        processed: 1,
+        success: 0,
+        error: 0,
+        canceled: 1,
+        resultado: {
           jobId: jobComTentativa.id,
           invoiceId: jobComTentativa.invoice_id,
           success: false,
           canceled: true,
           message: "Emissão cancelada pelo usuário.",
-        });
+        },
+      };
+    }
 
-        continue;
-      }
+    let invoiceAtual: Awaited<ReturnType<typeof buscarInvoiceStatus>> | null = null;
 
-      let invoiceAtual: Awaited<ReturnType<typeof buscarInvoiceStatus>> | null = null;
+    try {
+      invoiceAtual = await buscarInvoiceStatus(jobComTentativa.invoice_id);
+    } catch (invoiceReadError) {
+      console.error("Erro ao reler invoice após falha do job:", invoiceReadError);
+    }
 
-      try {
-        invoiceAtual = await buscarInvoiceStatus(jobComTentativa.invoice_id);
-      } catch (invoiceReadError) {
-        console.error("Erro ao reler invoice após falha do job:", invoiceReadError);
-      }
-
-      if (invoiceAtual?.nfse_key || invoiceAtual?.status === "success") {
-        await finalizarJobSucesso(jobComTentativa.id, {
+    if (invoiceAtual?.nfse_key || invoiceAtual?.status === "success") {
+      await finalizarJobSucesso(jobComTentativa.id, {
+        success: true,
+        jobId: jobComTentativa.id,
+        invoiceId: jobComTentativa.invoice_id,
+        result: {
           success: true,
-          jobId: jobComTentativa.id,
-          invoiceId: jobComTentativa.invoice_id,
-          result: {
-            success: true,
-            nfseKey: invoiceAtual.nfse_key,
-            pdfUrl: invoiceAtual.pdf_url,
-            xmlUrl: invoiceAtual.xml_url,
-            pdfPath: invoiceAtual.pdf_path,
-            xmlPath: invoiceAtual.xml_path,
-            warning: invoiceAtual.error_message,
-          },
-        });
+          nfseKey: invoiceAtual.nfse_key,
+          pdfUrl: invoiceAtual.pdf_url,
+          xmlUrl: invoiceAtual.xml_url,
+          pdfPath: invoiceAtual.pdf_path,
+          xmlPath: invoiceAtual.xml_path,
+          warning: invoiceAtual.error_message,
+        },
+      });
 
-        processedCount += 1;
-        successCount += 1;
-
-        resultados.push({
+      return {
+        processed: 1,
+        success: 1,
+        error: 0,
+        canceled: 0,
+        resultado: {
           jobId: jobComTentativa.id,
           invoiceId: jobComTentativa.invoice_id,
           success: true,
@@ -870,40 +856,83 @@ async function executarFila() {
             xmlPath: invoiceAtual.xml_path,
             warning: invoiceAtual.error_message,
           },
-        });
+        },
+      };
+    }
 
-        continue;
-      }
+    const excedeu =
+      Number(jobComTentativa.attempts || 0) >=
+      Number(jobComTentativa.max_attempts || 3);
 
-      const excedeu =
-        Number(jobComTentativa.attempts || 0) >=
-        Number(jobComTentativa.max_attempts || 3);
+    if (excedeu) {
+      await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
+    } else {
+      await atualizarInvoiceParaPending(
+        jobComTentativa.invoice_id,
+        "Tentando novamente a emissão após falha temporária."
+      );
+    }
 
-      if (excedeu) {
-        await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
-      } else {
-        await atualizarInvoiceParaPending(
-          jobComTentativa.invoice_id,
-          "Tentando novamente a emissão após falha temporária."
-        );
-      }
+    await finalizarJobErro(jobComTentativa, mensagemErro, {
+      lastError: mensagemErro,
+      attempt: jobComTentativa.attempts,
+    });
 
-      await finalizarJobErro(jobComTentativa, mensagemErro, {
-        lastError: mensagemErro,
-        attempt: jobComTentativa.attempts,
-      });
-
-      processedCount += 1;
-      errorCount += 1;
-
-      resultados.push({
+    return {
+      processed: 1,
+      success: 0,
+      error: 1,
+      canceled: 0,
+      resultado: {
         jobId: jobComTentativa.id,
         invoiceId: jobComTentativa.invoice_id,
         success: false,
         canceled: false,
         willRetry: !excedeu,
         message: mensagemErro,
-      });
+      },
+    };
+  }
+}
+
+async function executarFila() {
+  const recuperados = await liberarJobsTravados();
+
+  let processedCount = 0;
+  let successCount = 0;
+  let errorCount = 0;
+  let canceledCount = 0;
+  const resultados: any[] = [];
+
+  while (true) {
+    const jobs = await buscarJobsPendentes(MAX_PARALLEL_JOBS);
+
+    if (!jobs.length) {
+      break;
+    }
+
+    const loteResultados = await Promise.all(
+      jobs.map((job) => processarJobComResultado(job))
+    );
+
+    const resultadosValidos = loteResultados.filter(Boolean) as Array<{
+      processed: number;
+      success: number;
+      error: number;
+      canceled: number;
+      resultado: any;
+    }>;
+
+    if (!resultadosValidos.length) {
+      break;
+    }
+
+    for (const item of resultadosValidos) {
+      processedCount += item.processed;
+      successCount += item.success;
+      errorCount += item.error;
+      canceledCount += item.canceled;
+      resultados.push(item.resultado);
     }
   }
 
