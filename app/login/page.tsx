@@ -45,7 +45,7 @@ export default function LoginPage() {
       const client = getClientSession();
 
       if (client?.id && client.is_active) {
-        router.replace("/dashboard-cliente");
+        router.replace("/area-cliente");
         return;
       }
 
@@ -130,7 +130,7 @@ export default function LoginPage() {
         subscription_status: cliente.subscription_status ?? null,
       });
 
-      router.replace("/dashboard-cliente");
+      router.replace("/area-cliente");
     } catch (error) {
       console.log("Erro inesperado no login:", error);
       clearAllSessions();
