@@ -98,7 +98,7 @@ function formatarData(valor?: string | null) {
 export default function ClientesPage() {
   const router = useRouter();
   const { isLoading: loadingAccess, isAuthorized: authorized } =
-    useProtectedRoute(["partner_company"]);
+    useProtectedRoute();
 
   const [empresa, setEmpresa] = useState<EmpresaSessao | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
