@@ -97,7 +97,7 @@ function formatarData(valor?: string | null) {
 
 export default function ClientesPage() {
   const router = useRouter();
-  const { isLoading: loadingAccess, isAuthorized: authorized } = useProtectedRoute();
+  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
 
   const [empresa, setEmpresa] = useState<EmpresaSessao | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -124,12 +124,22 @@ export default function ClientesPage() {
         return;
       }
 
-      setEmpresa(empresaSessao);
+      const empresaNormalizada: EmpresaSessao = {
+        id: Number(empresaSessao.id),
+        name: String(empresaSessao.name || ""),
+        cnpj: String(empresaSessao.cnpj || ""),
+        email: String(empresaSessao.email || ""),
+        phone: String(empresaSessao.phone || ""),
+        address: String(empresaSessao.address || ""),
+        user_id: Number(empresaSessao.user_id ?? 0),
+      };
+
+      setEmpresa(empresaNormalizada);
 
       const { data, error } = await supabase
         .from("clients")
         .select("*")
-        .eq("partner_company_id", empresaSessao.id)
+        .eq("partner_company_id", empresaNormalizada.id)
         .order("id", { ascending: false });
 
       if (error) {
