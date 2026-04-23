@@ -79,17 +79,19 @@ export default function LoginPage() {
 
       clearAllSessions();
 
-      const { data: clienteData, error: clienteError } = await supabase
+      const { data: clientesData, error: clienteError } = await supabase
         .from("clients")
         .select("*")
-        .ilike("email", emailNormalizado)
-        .maybeSingle();
+        .eq("email", emailNormalizado)
+        .limit(1);
 
       if (clienteError) {
         console.log("Erro ao buscar cliente:", clienteError);
         setMensagem("Erro ao validar acesso.");
         return;
       }
+
+      const clienteData = Array.isArray(clientesData) ? clientesData[0] : null;
 
       if (!clienteData) {
         setMensagem("Email ou senha inválidos.");
