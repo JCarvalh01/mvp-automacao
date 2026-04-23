@@ -7,8 +7,38 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   clearAllSessions,
   getClientSession,
+  getPartnerCompanySession,
+  getUserSession,
   saveClientSession,
+  savePartnerCompanySession,
+  saveUserSession,
 } from "@/lib/session";
+
+type Admin = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  password: string | null;
+};
+
+type User = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  password: string | null;
+  user_type: "admin" | "partner_company" | "client" | string;
+  is_active?: boolean | null;
+};
+
+type PartnerCompany = {
+  id: number;
+  name: string | null;
+  cnpj?: string | null;
+  email: string | null;
+  phone?: string | null;
+  address?: string | null;
+  user_id?: number | null;
+};
 
 type Cliente = {
   id: number;
@@ -30,6 +60,10 @@ type Cliente = {
   subscription_status?: string | null;
 };
 
+const ADMIN_REDIRECT = "/admin";
+const PARTNER_REDIRECT = "/dashboard-empresa";
+const CLIENT_REDIRECT = "/area-cliente";
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -42,10 +76,26 @@ export default function LoginPage() {
 
   useEffect(() => {
     try {
+      const user = getUserSession();
+      const partnerCompany = getPartnerCompanySession();
       const client = getClientSession();
 
+      if (user?.user_type === "admin" && user.is_active) {
+        router.replace(ADMIN_REDIRECT);
+        return;
+      }
+
+      if (
+        user?.user_type === "partner_company" &&
+        user.is_active &&
+        partnerCompany?.id
+      ) {
+        router.replace(PARTNER_REDIRECT);
+        return;
+      }
+
       if (client?.id && client.is_active) {
-        router.replace("/area-cliente");
+        router.replace(CLIENT_REDIRECT);
         return;
       }
 
@@ -79,6 +129,186 @@ export default function LoginPage() {
 
       clearAllSessions();
 
+      // 1) ADMIN
+      const { data: adminsData, error: adminError } = await supabase
+        .from("admins")
+        .select("*")
+        .eq("email", emailNormalizado)
+        .limit(1);
+
+      if (adminError) {
+        console.log("Erro ao buscar admin:", adminError);
+        setMensagem("Erro ao validar acesso.");
+        return;
+      }
+
+      const adminData = Array.isArray(adminsData) ? adminsData[0] : null;
+
+      if (adminData) {
+        const admin = adminData as Admin;
+
+        if (String(admin.password || "").trim() !== senhaNormalizada) {
+          setMensagem("Email ou senha inválidos.");
+          return;
+        }
+
+        saveUserSession({
+          id: Number(admin.id),
+          name: String(admin.name || "Admin"),
+          email: String(admin.email || emailNormalizado),
+          user_type: "admin",
+          is_active: true,
+        });
+
+        router.replace(ADMIN_REDIRECT);
+        return;
+      }
+
+      // 2) USERS (admin / partner_company / client)
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", emailNormalizado)
+        .limit(1);
+
+      if (usersError) {
+        console.log("Erro ao buscar users:", usersError);
+        setMensagem("Erro ao validar acesso.");
+        return;
+      }
+
+      const userData = Array.isArray(usersData) ? usersData[0] : null;
+
+      if (userData) {
+        const user = userData as User;
+
+        if (String(user.password || "").trim() !== senhaNormalizada) {
+          setMensagem("Email ou senha inválidos.");
+          return;
+        }
+
+        if (user.is_active === false) {
+          setMensagem("Seu cadastro está inativo.");
+          return;
+        }
+
+        if (user.user_type === "admin") {
+          saveUserSession({
+            id: Number(user.id),
+            name: String(user.name || "Admin"),
+            email: String(user.email || emailNormalizado),
+            user_type: "admin",
+            is_active: user.is_active ?? true,
+          });
+
+          router.replace(ADMIN_REDIRECT);
+          return;
+        }
+
+        if (user.user_type === "partner_company") {
+          const { data: partnerCompaniesData, error: partnerError } = await supabase
+            .from("partner_companies")
+            .select("*")
+            .eq("user_id", user.id)
+            .limit(1);
+
+          if (partnerError) {
+            console.log("Erro ao buscar empresa parceira:", partnerError);
+            setMensagem("Erro ao validar acesso.");
+            return;
+          }
+
+          const partnerData = Array.isArray(partnerCompaniesData)
+            ? partnerCompaniesData[0]
+            : null;
+
+          if (!partnerData) {
+            setMensagem("Empresa parceira não encontrada.");
+            return;
+          }
+
+          const partner = partnerData as PartnerCompany;
+
+          saveUserSession({
+            id: Number(user.id),
+            name: String(user.name || partner.name || "Empresa"),
+            email: String(user.email || partner.email || emailNormalizado),
+            user_type: "partner_company",
+            is_active: user.is_active ?? true,
+          });
+
+          savePartnerCompanySession({
+            id: Number(partner.id),
+            name: String(partner.name || "Empresa"),
+            cnpj: String(partner.cnpj || ""),
+            email: String(partner.email || emailNormalizado),
+            phone: String(partner.phone || ""),
+            address: String(partner.address || ""),
+            user_id: partner.user_id ?? user.id ?? null,
+          });
+
+          router.replace(PARTNER_REDIRECT);
+          return;
+        }
+
+        if (user.user_type === "client") {
+          const { data: clientesByUserData, error: clienteByUserError } = await supabase
+            .from("clients")
+            .select("*")
+            .eq("user_id", user.id)
+            .limit(1);
+
+          if (clienteByUserError) {
+            console.log("Erro ao buscar cliente por user_id:", clienteByUserError);
+            setMensagem("Erro ao validar acesso.");
+            return;
+          }
+
+          const clienteByUser = Array.isArray(clientesByUserData)
+            ? clientesByUserData[0]
+            : null;
+
+          if (!clienteByUser) {
+            setMensagem("Cliente não encontrado.");
+            return;
+          }
+
+          const cliente = clienteByUser as Cliente;
+
+          saveUserSession({
+            id: Number(user.id),
+            name: String(user.name || cliente.name || "Cliente"),
+            email: String(user.email || cliente.email || emailNormalizado),
+            user_type: "client",
+            is_active: user.is_active ?? true,
+          });
+
+          saveClientSession({
+            id: Number(cliente.id),
+            name: String(cliente.name || "Cliente"),
+            email: String(cliente.email || emailNormalizado),
+            cnpj: String(cliente.cnpj || ""),
+            phone: String(cliente.phone || ""),
+            address: String(cliente.address || ""),
+            password: cliente.password || null,
+            emissor_password: cliente.emissor_password || null,
+            client_type: cliente.client_type || null,
+            mei_created_at: cliente.mei_created_at || null,
+            is_active: cliente.is_active ?? true,
+            partner_company_id: cliente.partner_company_id ?? null,
+            user_id: cliente.user_id ?? user.id ?? null,
+            plan_type: cliente.plan_type ?? null,
+            notes_limit: cliente.notes_limit ?? null,
+            is_blocked: cliente.is_blocked ?? null,
+            subscription_status: cliente.subscription_status ?? null,
+          });
+
+          router.replace(CLIENT_REDIRECT);
+          return;
+        }
+      }
+
+      // 3) CLIENTS (acesso direto do cliente)
       const { data: clientesData, error: clienteError } = await supabase
         .from("clients")
         .select("*")
@@ -110,13 +340,21 @@ export default function LoginPage() {
         return;
       }
 
+      saveUserSession({
+        id: Number(cliente.user_id || cliente.id),
+        name: String(cliente.name || "Cliente"),
+        email: String(cliente.email || emailNormalizado),
+        user_type: "client",
+        is_active: cliente.is_active ?? true,
+      });
+
       saveClientSession({
-        id: cliente.id,
-        name: cliente.name || "Cliente",
-        email: cliente.email || emailNormalizado,
-        cnpj: cliente.cnpj || "",
-        phone: cliente.phone || "",
-        address: cliente.address || "",
+        id: Number(cliente.id),
+        name: String(cliente.name || "Cliente"),
+        email: String(cliente.email || emailNormalizado),
+        cnpj: String(cliente.cnpj || ""),
+        phone: String(cliente.phone || ""),
+        address: String(cliente.address || ""),
         password: cliente.password || null,
         emissor_password: cliente.emissor_password || null,
         client_type: cliente.client_type || null,
@@ -130,7 +368,7 @@ export default function LoginPage() {
         subscription_status: cliente.subscription_status ?? null,
       });
 
-      router.replace("/area-cliente");
+      router.replace(CLIENT_REDIRECT);
     } catch (error) {
       console.log("Erro inesperado no login:", error);
       clearAllSessions();
@@ -171,7 +409,7 @@ export default function LoginPage() {
           <div style={heroInfoRowStyle}>
             <div style={heroInfoCardStyle}>
               <span style={heroInfoLabelStyle}>Acesso</span>
-              <strong style={heroInfoValueStyle}>Cliente</strong>
+              <strong style={heroInfoValueStyle}>Integrado</strong>
             </div>
 
             <div style={heroInfoCardStyle}>
