@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 export default function DashboardClientePage() {
-  const router = useRouter();
-
   useEffect(() => {
     const timer = setTimeout(() => {
-      router.replace("/area-cliente");
-    }, 800);
+      window.location.replace("/area-cliente");
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [router]);
+  }, []);
 
   return (
     <main style={pageStyle}>
@@ -66,7 +63,7 @@ export default function DashboardClientePage() {
           <div style={helperRowStyle}>
             <button
               type="button"
-              onClick={() => router.replace("/area-cliente")}
+              onClick={() => window.location.replace("/area-cliente")}
               style={primaryButtonStyle}
             >
               Ir agora para a área do cliente
@@ -277,7 +274,6 @@ const progressBarStyle: React.CSSProperties = {
   height: "100%",
   borderRadius: "999px",
   background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-  animation: "none",
 };
 
 const helperRowStyle: React.CSSProperties = {
