@@ -13,7 +13,7 @@ export type PartnerCompanySession = {
   email: string;
   phone: string;
   address: string;
-  user_id: number;
+  user_id?: number | null;
 };
 
 export type ClientSession = {
@@ -24,10 +24,16 @@ export type ClientSession = {
   phone: string;
   address: string;
   password?: string | null;
-  client_type?: string;
+  emissor_password?: string | null;
+  client_type?: string | null;
   mei_created_at?: string | null;
   is_active: boolean;
   partner_company_id: number | null;
+  plan_type?: string | null;
+  notes_limit?: number | null;
+  is_blocked?: boolean | null;
+  subscription_status?: string | null;
+  user_id?: number | null;
 };
 
 const USER_KEY = "user";
@@ -35,43 +41,29 @@ const PARTNER_COMPANY_KEY = "partnerCompany";
 const CLIENT_KEY = "client";
 const PARTNER_COMPANY_ID_KEY = "partner_company_id";
 
-export function getUserSession(): UserSession | null {
+function safeRead<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = localStorage.getItem(USER_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
-    return JSON.parse(raw) as UserSession;
+    return JSON.parse(raw) as T;
   } catch (error) {
-    console.error("Erro ao ler sessão do usuário:", error);
+    console.error(`Erro ao ler ${key}:`, error);
     return null;
   }
+}
+
+export function getUserSession(): UserSession | null {
+  return safeRead<UserSession>(USER_KEY);
 }
 
 export function getPartnerCompanySession(): PartnerCompanySession | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = localStorage.getItem(PARTNER_COMPANY_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PartnerCompanySession;
-  } catch (error) {
-    console.error("Erro ao ler sessão da empresa:", error);
-    return null;
-  }
+  return safeRead<PartnerCompanySession>(PARTNER_COMPANY_KEY);
 }
 
 export function getClientSession(): ClientSession | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = localStorage.getItem(CLIENT_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ClientSession;
-  } catch (error) {
-    console.error("Erro ao ler sessão do cliente:", error);
-    return null;
-  }
+  return safeRead<ClientSession>(CLIENT_KEY);
 }
 
 export function saveUserSession(user: UserSession) {
@@ -81,7 +73,6 @@ export function saveUserSession(user: UserSession) {
 
 export function savePartnerCompanySession(company: PartnerCompanySession) {
   if (typeof window === "undefined") return;
-
   localStorage.setItem(PARTNER_COMPANY_KEY, JSON.stringify(company));
   localStorage.setItem(PARTNER_COMPANY_ID_KEY, String(company.id));
 }
