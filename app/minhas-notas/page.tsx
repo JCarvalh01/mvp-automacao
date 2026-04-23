@@ -198,12 +198,26 @@ export default function MinhasNotasPage() {
         return;
       }
 
-      setCliente(session);
+      const clienteNormalizado: ClienteSession = {
+        id: Number(session.id),
+        name: String(session.name || ""),
+        email: String(session.email || ""),
+        cnpj: String(session.cnpj || ""),
+        phone: String(session.phone || ""),
+        address: String(session.address || ""),
+        password: session.password ?? null,
+        client_type: session.client_type ?? undefined,
+        mei_created_at: session.mei_created_at ?? null,
+        is_active: Boolean(session.is_active),
+        partner_company_id: session.partner_company_id ?? null,
+      };
+
+      setCliente(clienteNormalizado);
 
       const { data, error } = await supabase
         .from("invoices")
         .select("*")
-        .eq("client_id", session.id)
+        .eq("client_id", clienteNormalizado.id)
         .order("created_at", { ascending: false });
 
       if (error) {
