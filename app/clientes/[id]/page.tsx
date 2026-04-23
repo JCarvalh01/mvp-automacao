@@ -97,7 +97,8 @@ function formatarData(valor?: string | null) {
 
 export default function ClientesPage() {
   const router = useRouter();
-  const { loading: loadingAccess, authorized } = useProtectedRoute(["partner_company"]);
+  const { isLoading: loadingAccess, isAuthorized: authorized } =
+    useProtectedRoute(["partner_company"]);
 
   const [empresa, setEmpresa] = useState<EmpresaSessao | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -214,12 +215,12 @@ export default function ClientesPage() {
 
       const dados = base.map((cliente) => ({
         "ID do cliente": cliente.id,
-        "Nome": cliente.name || "",
-        "CNPJ": formatarCnpj(cliente.cnpj),
-        "Email": cliente.email || "",
-        "Telefone": formatarTelefone(cliente.phone),
-        "Endereço": cliente.address || "",
-        "Status": cliente.is_active === false ? "Inativo" : "Ativo",
+        Nome: cliente.name || "",
+        CNPJ: formatarCnpj(cliente.cnpj),
+        Email: cliente.email || "",
+        Telefone: formatarTelefone(cliente.phone),
+        Endereço: cliente.address || "",
+        Status: cliente.is_active === false ? "Inativo" : "Ativo",
         "É MEI": cliente.is_mei === true ? "Sim" : "Não",
         "Data de cadastro": formatarData(cliente.created_at),
       }));
