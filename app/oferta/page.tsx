@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 export default function OfertaPage() {
   const [viewportWidth, setViewportWidth] = useState(1200);
@@ -81,7 +81,7 @@ export default function OfertaPage() {
         <section
           style={{
             ...heroSectionStyle,
-            gridTemplateColumns: isMobile ? "1fr" : "1.15fr 0.85fr",
+            gridTemplateColumns: isMobile ? "1fr" : "1.12fr 0.88fr",
             gap: isMobile ? "14px" : "18px",
             marginBottom: isMobile ? "22px" : "26px",
           }}
@@ -93,7 +93,7 @@ export default function OfertaPage() {
               borderRadius: isMobile ? "24px" : "30px",
             }}
           >
-            <div style={heroPillStyle}>Solução para MEIs</div>
+            <div style={heroPillStyle}>Solução para MEIs e microempreendedores</div>
 
             <h1
               style={{
@@ -102,10 +102,11 @@ export default function OfertaPage() {
                 lineHeight: isMobile ? 1.08 : 1.02,
               }}
             >
-              Emita suas NFS-e
+              Pare de emitir nota manual
               <br />
-              com mais rapidez
-              <br />e menos retrabalho
+              e tenha mais controle
+              <br />
+              do seu faturamento
             </h1>
 
             <p
@@ -116,9 +117,10 @@ export default function OfertaPage() {
                 lineHeight: isMobile ? 1.7 : 1.8,
               }}
             >
-              Organize sua operação fiscal em um só lugar, acompanhe suas notas
-              emitidas, mantenha PDF e XML centralizados e reduza o tempo gasto
-              com processos manuais no dia a dia.
+              A MVP automatiza suas notas, organiza tudo em um só lugar e ajuda
+              você a acompanhar seu faturamento mensal, trimestral e anual. No
+              plano completo, sua operação ainda pode contar com suporte mais
+              completo e opção com contador.
             </p>
 
             <div
@@ -135,20 +137,22 @@ export default function OfertaPage() {
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Criar conta e começar
+                Começar agora
               </Link>
 
               <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noopener noreferrer"
+                href="#planos"
                 style={{
                   ...heroGhostButtonStyle,
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Falar no WhatsApp
+                Escolher meu plano
               </a>
+            </div>
+
+            <div style={heroMicroTextStyle}>
+              sem compromisso • configuração rápida • acesso imediato
             </div>
 
             <div
@@ -163,7 +167,7 @@ export default function OfertaPage() {
             >
               <div style={heroStatCardStyle}>
                 <span style={heroStatLabelStyle}>Emissão</span>
-                <strong style={heroStatValueStyle}>NFS-e mais rápida</strong>
+                <strong style={heroStatValueStyle}>NFS-e com mais rapidez</strong>
               </div>
 
               <div style={heroStatCardStyle}>
@@ -172,8 +176,8 @@ export default function OfertaPage() {
               </div>
 
               <div style={heroStatCardStyle}>
-                <span style={heroStatLabelStyle}>Rotina</span>
-                <strong style={heroStatValueStyle}>Menos trabalho manual</strong>
+                <span style={heroStatLabelStyle}>Faturamento</span>
+                <strong style={heroStatValueStyle}>Visão mensal, trimestral e anual</strong>
               </div>
             </div>
           </div>
@@ -191,18 +195,13 @@ export default function OfertaPage() {
                 <span style={panelStatusStyle}>Fluxo simples</span>
               </div>
 
-              <div
-                style={{
-                  ...stepsGridStyle,
-                  gridTemplateColumns: "1fr",
-                }}
-              >
+              <div style={stepsGridStyle}>
                 <div style={stepCardStyle}>
                   <span style={stepNumberStyle}>1</span>
                   <div>
                     <span style={stepLabelStyle}>Crie sua conta</span>
                     <strong style={stepValueStyle}>
-                      Faça seu cadastro na plataforma
+                      Faça seu cadastro e acesse a plataforma
                     </strong>
                   </div>
                 </div>
@@ -210,9 +209,9 @@ export default function OfertaPage() {
                 <div style={stepCardStyle}>
                   <span style={stepNumberStyle}>2</span>
                   <div>
-                    <span style={stepLabelStyle}>Escolha o plano</span>
+                    <span style={stepLabelStyle}>Escolha seu plano</span>
                     <strong style={stepValueStyle}>
-                      Selecione a opção ideal para sua rotina
+                      Selecione a opção ideal para sua rotina fiscal
                     </strong>
                   </div>
                 </div>
@@ -229,8 +228,68 @@ export default function OfertaPage() {
               </div>
 
               <div style={panelFooterStyle}>
-                Dependendo do plano, a operação pode contar com suporte
-                especializado e até opção com contador.
+                Você centraliza emissão, histórico, PDF, XML e faturamento em um
+                ambiente mais organizado, com possibilidade de mais apoio
+                conforme o plano escolhido.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            ...problemSectionStyle,
+            marginBottom: isMobile ? "22px" : "26px",
+          }}
+        >
+          <div
+            style={{
+              ...problemCardStyle,
+              padding: isMobile ? "20px 18px" : "24px",
+            }}
+          >
+            <span style={problemMiniStyle}>Hoje muitos MEIs ainda fazem assim</span>
+            <h2
+              style={{
+                ...problemTitleStyle,
+                fontSize: isMobile ? "28px" : "34px",
+                lineHeight: isMobile ? 1.15 : 1.2,
+              }}
+            >
+              O problema não é só emitir a nota. É ter que repetir isso todo mês.
+            </h2>
+
+            <div
+              style={{
+                ...problemGridStyle,
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(3, minmax(0, 1fr))",
+                gap: isMobile ? "12px" : "14px",
+              }}
+            >
+              <div style={problemItemStyle}>
+                <strong style={problemItemTitleStyle}>Tempo perdido</strong>
+                <p style={problemItemTextStyle}>
+                  Entrar no portal, preencher tudo manualmente e repetir o mesmo
+                  processo consome tempo demais.
+                </p>
+              </div>
+
+              <div style={problemItemStyle}>
+                <strong style={problemItemTitleStyle}>Pouca organização</strong>
+                <p style={problemItemTextStyle}>
+                  Sem centralização, PDF, XML, histórico e faturamento ficam
+                  espalhados e difíceis de acompanhar.
+                </p>
+              </div>
+
+              <div style={problemItemStyle}>
+                <strong style={problemItemTitleStyle}>Mais risco operacional</strong>
+                <p style={problemItemTextStyle}>
+                  Quando tudo é manual, o risco de erro e retrabalho na rotina
+                  fiscal fica muito maior.
+                </p>
               </div>
             </div>
           </div>
@@ -243,7 +302,7 @@ export default function OfertaPage() {
           }}
         >
           <div style={sectionIntroStyle}>
-            <div style={sectionBadgeStyle}>Por que usar</div>
+            <div style={sectionBadgeStyle}>O que você ganha</div>
             <h2
               style={{
                 ...sectionTitleStyle,
@@ -251,7 +310,7 @@ export default function OfertaPage() {
                 lineHeight: isMobile ? 1.15 : 1.2,
               }}
             >
-              Mais controle para a rotina fiscal
+              Mais controle para sua rotina fiscal
             </h2>
             <p
               style={{
@@ -260,15 +319,14 @@ export default function OfertaPage() {
                 lineHeight: isMobile ? 1.7 : 1.8,
               }}
             >
-              A proposta é simples: facilitar sua operação, dar mais organização
-              e deixar sua emissão fiscal em um ambiente mais profissional.
+              A proposta da MVP é simples: tirar sua operação do manual e
+              colocar tudo em um ambiente mais rápido, claro e profissional.
             </p>
           </div>
 
           <div
             style={{
               ...featuresGridStyle,
-              display: "grid",
               gridTemplateColumns: isMobile
                 ? "1fr"
                 : "repeat(3, minmax(0, 1fr))",
@@ -291,8 +349,8 @@ export default function OfertaPage() {
                 NFS-e com mais agilidade
               </h3>
               <p style={featureTextStyle}>
-                Reduza o esforço operacional e tenha uma rotina mais direta para
-                emissão das suas notas fiscais.
+                Emita suas notas com muito mais rapidez e reduza o esforço em
+                tarefas repetitivas do dia a dia.
               </p>
             </article>
 
@@ -312,8 +370,8 @@ export default function OfertaPage() {
                 PDF e XML centralizados
               </h3>
               <p style={featureTextStyle}>
-                Mantenha seus arquivos organizados e encontre suas notas com
-                mais facilidade dentro da plataforma.
+                Mantenha suas notas emitidas e os arquivos fiscais organizados
+                em um único lugar, de forma muito mais simples.
               </p>
             </article>
 
@@ -323,20 +381,122 @@ export default function OfertaPage() {
                 padding: isMobile ? "18px" : "22px",
               }}
             >
-              <span style={featureTagStyle}>Controle</span>
+              <span style={featureTagStyle}>Faturamento</span>
               <h3
                 style={{
                   ...featureTitleStyle,
                   fontSize: isMobile ? "20px" : "22px",
                 }}
               >
-                Tudo em um só lugar
+                Visão do seu negócio
               </h3>
               <p style={featureTextStyle}>
-                Visualize histórico, acompanhe sua operação e trabalhe com mais
-                clareza no dia a dia fiscal.
+                Acompanhe faturamento mensal, trimestral e anual com dashboard
+                personalizado e visão mais clara da sua operação.
               </p>
             </article>
+          </div>
+        </section>
+
+        <section
+          id="planos"
+          style={{
+            ...plansSectionStyle,
+            marginBottom: isMobile ? "22px" : "26px",
+          }}
+        >
+          <div style={sectionIntroStyle}>
+            <div style={sectionBadgeStyle}>Planos</div>
+            <h2
+              style={{
+                ...sectionTitleStyle,
+                fontSize: isMobile ? "28px" : "34px",
+                lineHeight: isMobile ? 1.15 : 1.2,
+              }}
+            >
+              Escolha o plano ideal para sua operação
+            </h2>
+            <p
+              style={{
+                ...sectionTextStyle,
+                fontSize: isMobile ? "14px" : "15px",
+                lineHeight: isMobile ? 1.7 : 1.8,
+              }}
+            >
+              Se você quer começar com mais organização, o Essencial já resolve.
+              Se quer liberdade, automação completa e um ambiente mais forte de
+              controle, o Full é o mais indicado.
+            </p>
+          </div>
+
+          <div
+            style={{
+              ...plansGridStyle,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(2, minmax(0, 1fr))",
+              gap: isMobile ? "14px" : "18px",
+            }}
+          >
+            <div style={planCardStyle}>
+              <span style={planMiniStyle}>Para começar</span>
+              <h3 style={planTitleStyle}>Essencial</h3>
+              <div style={planPriceStyle}>R$ 29,90</div>
+              <p style={planTextStyle}>
+                Ideal para quem quer sair do manual e começar com mais
+                organização no dia a dia fiscal.
+              </p>
+
+              <div style={planListStyle}>
+                <div style={planItemStyle}>✔ Até 10 notas por mês</div>
+                <div style={planItemStyle}>✔ Emissão rápida e simplificada</div>
+                <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
+                <div style={planItemStyle}>✔ PDF e XML organizados</div>
+                <div style={planItemStyle}>✔ Controle básico de faturamento</div>
+                <div style={planItemStyle}>✔ Suporte da plataforma</div>
+              </div>
+
+              <div style={planObsStyle}>
+                Esse plano conta com suporte, mas não inclui acompanhamento com contador.
+              </div>
+
+              <Link href="/cadastro-cliente" style={planPrimaryButtonStyle}>
+                Assinar Essencial
+              </Link>
+            </div>
+
+            <div style={planFeaturedCardStyle}>
+              <span style={planFeaturedMiniStyle}>Mais completo</span>
+              <h3 style={planTitleStyle}>Full</h3>
+              <div style={planPriceStyle}>R$ 59,90</div>
+              <p style={planTextStyle}>
+                Para quem quer resolver a operação fiscal de vez, com mais
+                controle, liberdade e visão completa do negócio.
+              </p>
+
+              <div style={planListStyle}>
+                <div style={planItemStyle}>✔ Notas fiscais ilimitadas</div>
+                <div style={planItemStyle}>✔ Emissão automática completa</div>
+                <div style={planItemStyle}>✔ Dashboard completo e personalizado</div>
+                <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
+                <div style={planItemStyle}>✔ Controle operacional</div>
+                <div style={planItemStyle}>
+                  ✔ Faturamento mensal, trimestral e anual
+                </div>
+                <div style={planItemStyle}>✔ PDF e XML organizados</div>
+                <div style={planItemStyle}>✔ Suporte mais completo</div>
+                <div style={planItemStyle}>✔ Opção com contador</div>
+              </div>
+
+              <div style={planObsHighlightStyle}>
+                É o plano mais indicado para quem quer mais tranquilidade e menos
+                dependência da emissão manual.
+              </div>
+
+              <Link href="/cadastro-cliente" style={planFeaturedButtonStyle}>
+                Assinar Full
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -353,7 +513,7 @@ export default function OfertaPage() {
             }}
           >
             <div style={salesTextWrapStyle}>
-              <span style={salesMiniStyle}>Para quem faz sentido</span>
+              <span style={salesMiniStyle}>Por que isso faz sentido</span>
               <h2
                 style={{
                   ...salesTitleStyle,
@@ -361,19 +521,17 @@ export default function OfertaPage() {
                   lineHeight: isMobile ? 1.15 : 1.2,
                 }}
               >
-                Pensado para quem quer mais praticidade na emissão fiscal
+                Menos retrabalho, mais clareza e mais apoio
               </h2>
               <p style={salesTextStyle}>
-                A página é focada em MEIs, mas a estrutura da plataforma também
-                atende operações que precisam de mais suporte, acompanhamento e
-                organização conforme o plano escolhido.
+                A MVP foi pensada para quem quer ganhar tempo, organizar melhor a
+                rotina fiscal e acompanhar a operação de forma mais profissional.
               </p>
             </div>
 
             <div
               style={{
                 ...salesGridStyle,
-                display: "grid",
                 gridTemplateColumns: isMobile
                   ? "1fr"
                   : "repeat(3, minmax(0, 1fr))",
@@ -383,24 +541,24 @@ export default function OfertaPage() {
               <div style={salesItemStyle}>
                 <strong style={salesItemTitleStyle}>Mais rapidez</strong>
                 <p style={salesItemTextStyle}>
-                  Menos tempo em tarefas repetitivas e mais agilidade no
-                  acompanhamento das suas notas.
+                  Menos tempo em tarefas repetitivas e mais agilidade para emitir
+                  e acompanhar suas notas.
                 </p>
               </div>
 
               <div style={salesItemStyle}>
                 <strong style={salesItemTitleStyle}>Mais organização</strong>
                 <p style={salesItemTextStyle}>
-                  Histórico, PDF e XML reunidos em um ambiente centralizado e
-                  fácil de acompanhar.
+                  Histórico, PDF, XML e faturamento reunidos em um ambiente
+                  centralizado e fácil de acompanhar.
                 </p>
               </div>
 
               <div style={salesItemStyle}>
                 <strong style={salesItemTitleStyle}>Mais apoio</strong>
                 <p style={salesItemTextStyle}>
-                  Dependendo do plano, a operação pode contar com suporte
-                  especializado e até opção com contador.
+                  No plano mais completo, sua operação ainda pode contar com
+                  opção de apoio com contador.
                 </p>
               </div>
             </div>
@@ -425,12 +583,11 @@ export default function OfertaPage() {
                   lineHeight: isMobile ? 1.15 : 1.2,
                 }}
               >
-                Crie sua conta e avance para a escolha do plano
+                Pare de emitir manualmente e comece com mais controle
               </h2>
               <p style={ctaTextStyle}>
-                O próximo passo é simples: faça seu cadastro, entre na
-                plataforma e siga para a etapa de escolha do plano ideal para
-                sua operação.
+                Faça seu cadastro, escolha o plano ideal e tenha sua rotina
+                fiscal em um ambiente mais rápido, organizado e profissional.
               </p>
             </div>
 
@@ -448,7 +605,7 @@ export default function OfertaPage() {
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Criar conta e começar
+                Quero começar agora
               </Link>
 
               <a
@@ -460,7 +617,7 @@ export default function OfertaPage() {
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Falar no WhatsApp
+                Tirar dúvida rápida no WhatsApp
               </a>
             </div>
           </div>
@@ -470,7 +627,7 @@ export default function OfertaPage() {
   );
 }
 
-const pageStyle: React.CSSProperties = {
+const pageStyle: CSSProperties = {
   minHeight: "100vh",
   position: "relative",
   overflow: "hidden",
@@ -480,7 +637,7 @@ const pageStyle: React.CSSProperties = {
   fontFamily: "Arial, sans-serif",
 };
 
-const glowTopStyle: React.CSSProperties = {
+const glowTopStyle: CSSProperties = {
   position: "absolute",
   top: "-140px",
   left: "-120px",
@@ -492,7 +649,7 @@ const glowTopStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-const glowMiddleStyle: React.CSSProperties = {
+const glowMiddleStyle: CSSProperties = {
   position: "absolute",
   top: "25%",
   right: "-120px",
@@ -504,7 +661,7 @@ const glowMiddleStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-const glowBottomStyle: React.CSSProperties = {
+const glowBottomStyle: CSSProperties = {
   position: "absolute",
   bottom: "-140px",
   left: "20%",
@@ -516,7 +673,7 @@ const glowBottomStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-const containerStyle: React.CSSProperties = {
+const containerStyle: CSSProperties = {
   position: "relative",
   zIndex: 1,
   maxWidth: "1180px",
@@ -524,7 +681,7 @@ const containerStyle: React.CSSProperties = {
   padding: "24px 20px 56px",
 };
 
-const headerStyle: React.CSSProperties = {
+const headerStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -533,13 +690,13 @@ const headerStyle: React.CSSProperties = {
   marginBottom: "32px",
 };
 
-const brandRowStyle: React.CSSProperties = {
+const brandRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "12px",
 };
 
-const brandBadgeStyle: React.CSSProperties = {
+const brandBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -552,13 +709,13 @@ const brandBadgeStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const navStyle: React.CSSProperties = {
+const navStyle: CSSProperties = {
   display: "flex",
   gap: "10px",
   flexWrap: "wrap",
 };
 
-const navLinkStyle: React.CSSProperties = {
+const navLinkStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -571,7 +728,7 @@ const navLinkStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const navPrimaryStyle: React.CSSProperties = {
+const navPrimaryStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -584,15 +741,15 @@ const navPrimaryStyle: React.CSSProperties = {
   boxShadow: "0 12px 28px rgba(37,99,235,0.30)",
 };
 
-const heroSectionStyle: React.CSSProperties = {
+const heroSectionStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.15fr 0.85fr",
+  gridTemplateColumns: "1.12fr 0.88fr",
   gap: "18px",
   alignItems: "stretch",
   marginBottom: "26px",
 };
 
-const heroContentStyle: React.CSSProperties = {
+const heroContentStyle: CSSProperties = {
   padding: "34px 30px",
   borderRadius: "30px",
   background:
@@ -602,7 +759,7 @@ const heroContentStyle: React.CSSProperties = {
   backdropFilter: "blur(16px)",
 };
 
-const heroPillStyle: React.CSSProperties = {
+const heroPillStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -616,7 +773,7 @@ const heroPillStyle: React.CSSProperties = {
   marginBottom: "16px",
 };
 
-const heroTitleStyle: React.CSSProperties = {
+const heroTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "52px",
   lineHeight: 1.02,
@@ -625,7 +782,7 @@ const heroTitleStyle: React.CSSProperties = {
   color: "#ffffff",
 };
 
-const heroSubtitleStyle: React.CSSProperties = {
+const heroSubtitleStyle: CSSProperties = {
   margin: "18px 0 0",
   maxWidth: "720px",
   fontSize: "17px",
@@ -633,14 +790,14 @@ const heroSubtitleStyle: React.CSSProperties = {
   color: "#cbd5e1",
 };
 
-const heroActionsStyle: React.CSSProperties = {
+const heroActionsStyle: CSSProperties = {
   display: "flex",
   gap: "12px",
   flexWrap: "wrap",
   marginTop: "24px",
 };
 
-const heroPrimaryButtonStyle: React.CSSProperties = {
+const heroPrimaryButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -653,7 +810,7 @@ const heroPrimaryButtonStyle: React.CSSProperties = {
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
 };
 
-const heroGhostButtonStyle: React.CSSProperties = {
+const heroGhostButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -666,38 +823,44 @@ const heroGhostButtonStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const heroStatsGridStyle: React.CSSProperties = {
+const heroMicroTextStyle: CSSProperties = {
+  marginTop: "10px",
+  fontSize: "13px",
+  color: "#94a3b8",
+};
+
+const heroStatsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: "12px",
   marginTop: "24px",
 };
 
-const heroStatCardStyle: React.CSSProperties = {
+const heroStatCardStyle: CSSProperties = {
   padding: "16px",
   borderRadius: "18px",
   background: "rgba(15,23,42,0.86)",
   border: "1px solid rgba(59,130,246,0.12)",
 };
 
-const heroStatLabelStyle: React.CSSProperties = {
+const heroStatLabelStyle: CSSProperties = {
   display: "block",
   fontSize: "12px",
   color: "#93c5fd",
   marginBottom: "6px",
 };
 
-const heroStatValueStyle: React.CSSProperties = {
+const heroStatValueStyle: CSSProperties = {
   fontSize: "15px",
   fontWeight: 700,
   color: "#ffffff",
 };
 
-const heroPanelWrapperStyle: React.CSSProperties = {
+const heroPanelWrapperStyle: CSSProperties = {
   display: "flex",
 };
 
-const heroPanelStyle: React.CSSProperties = {
+const heroPanelStyle: CSSProperties = {
   width: "100%",
   padding: "24px",
   borderRadius: "30px",
@@ -708,7 +871,7 @@ const heroPanelStyle: React.CSSProperties = {
   backdropFilter: "blur(16px)",
 };
 
-const panelTopStyle: React.CSSProperties = {
+const panelTopStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -716,7 +879,7 @@ const panelTopStyle: React.CSSProperties = {
   marginBottom: "18px",
 };
 
-const panelMiniStyle: React.CSSProperties = {
+const panelMiniStyle: CSSProperties = {
   fontSize: "12px",
   color: "#93c5fd",
   letterSpacing: "0.12em",
@@ -724,7 +887,7 @@ const panelMiniStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const panelStatusStyle: React.CSSProperties = {
+const panelStatusStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -737,12 +900,12 @@ const panelStatusStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
-const stepsGridStyle: React.CSSProperties = {
+const stepsGridStyle: CSSProperties = {
   display: "grid",
   gap: "12px",
 };
 
-const stepCardStyle: React.CSSProperties = {
+const stepCardStyle: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   gap: "12px",
@@ -752,7 +915,7 @@ const stepCardStyle: React.CSSProperties = {
   border: "1px solid rgba(59,130,246,0.12)",
 };
 
-const stepNumberStyle: React.CSSProperties = {
+const stepNumberStyle: CSSProperties = {
   minWidth: "34px",
   height: "34px",
   display: "inline-flex",
@@ -766,21 +929,21 @@ const stepNumberStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const stepLabelStyle: React.CSSProperties = {
+const stepLabelStyle: CSSProperties = {
   display: "block",
   fontSize: "12px",
   color: "#93c5fd",
   marginBottom: "6px",
 };
 
-const stepValueStyle: React.CSSProperties = {
+const stepValueStyle: CSSProperties = {
   fontSize: "15px",
   fontWeight: 700,
   color: "#ffffff",
   lineHeight: 1.5,
 };
 
-const panelFooterStyle: React.CSSProperties = {
+const panelFooterStyle: CSSProperties = {
   marginTop: "16px",
   padding: "14px 16px",
   borderRadius: "18px",
@@ -791,16 +954,75 @@ const panelFooterStyle: React.CSSProperties = {
   lineHeight: 1.7,
 };
 
-const featuresSectionStyle: React.CSSProperties = {
+const problemSectionStyle: CSSProperties = {
+  marginBottom: "26px",
+};
+
+const problemCardStyle: CSSProperties = {
+  padding: "24px",
+  borderRadius: "28px",
+  background:
+    "linear-gradient(135deg, rgba(2,6,23,0.88) 0%, rgba(8,17,40,0.96) 100%)",
+  border: "1px solid rgba(59,130,246,0.16)",
+  boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
+};
+
+const problemMiniStyle: CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  color: "#fca5a5",
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+  fontWeight: 700,
+  marginBottom: "8px",
+};
+
+const problemTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "34px",
+  fontWeight: 800,
+  color: "#ffffff",
+};
+
+const problemGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: "14px",
+  marginTop: "18px",
+};
+
+const problemItemStyle: CSSProperties = {
+  padding: "18px",
+  borderRadius: "20px",
+  background: "rgba(15,23,42,0.86)",
+  border: "1px solid rgba(59,130,246,0.12)",
+};
+
+const problemItemTitleStyle: CSSProperties = {
+  display: "block",
+  fontSize: "18px",
+  fontWeight: 800,
+  color: "#ffffff",
+  marginBottom: "8px",
+};
+
+const problemItemTextStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "14px",
+  lineHeight: 1.7,
+  color: "#cbd5e1",
+};
+
+const featuresSectionStyle: CSSProperties = {
   marginTop: "10px",
   marginBottom: "26px",
 };
 
-const sectionIntroStyle: React.CSSProperties = {
+const sectionIntroStyle: CSSProperties = {
   marginBottom: "16px",
 };
 
-const sectionBadgeStyle: React.CSSProperties = {
+const sectionBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -814,14 +1036,14 @@ const sectionBadgeStyle: React.CSSProperties = {
   marginBottom: "14px",
 };
 
-const sectionTitleStyle: React.CSSProperties = {
+const sectionTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "34px",
   fontWeight: 800,
   color: "#ffffff",
 };
 
-const sectionTextStyle: React.CSSProperties = {
+const sectionTextStyle: CSSProperties = {
   margin: "12px 0 0",
   color: "#cbd5e1",
   fontSize: "15px",
@@ -829,13 +1051,13 @@ const sectionTextStyle: React.CSSProperties = {
   maxWidth: "760px",
 };
 
-const featuresGridStyle: React.CSSProperties = {
+const featuresGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: "16px",
 };
 
-const featureCardStyle: React.CSSProperties = {
+const featureCardStyle: CSSProperties = {
   padding: "22px",
   borderRadius: "24px",
   background:
@@ -844,7 +1066,7 @@ const featureCardStyle: React.CSSProperties = {
   boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
 };
 
-const featureTagStyle: React.CSSProperties = {
+const featureTagStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -858,7 +1080,7 @@ const featureTagStyle: React.CSSProperties = {
   marginBottom: "14px",
 };
 
-const featureTitleStyle: React.CSSProperties = {
+const featureTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "22px",
   fontWeight: 800,
@@ -866,18 +1088,158 @@ const featureTitleStyle: React.CSSProperties = {
   lineHeight: 1.2,
 };
 
-const featureTextStyle: React.CSSProperties = {
+const featureTextStyle: CSSProperties = {
   margin: "12px 0 0",
   fontSize: "15px",
   lineHeight: 1.8,
   color: "#cbd5e1",
 };
 
-const salesSectionStyle: React.CSSProperties = {
+const plansSectionStyle: CSSProperties = {
   marginBottom: "26px",
 };
 
-const salesCardStyle: React.CSSProperties = {
+const plansGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "18px",
+};
+
+const planCardStyle: CSSProperties = {
+  padding: "24px",
+  borderRadius: "28px",
+  background:
+    "linear-gradient(180deg, rgba(2,6,23,0.90) 0%, rgba(15,23,42,0.92) 100%)",
+  border: "1px solid rgba(59,130,246,0.14)",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+};
+
+const planFeaturedCardStyle: CSSProperties = {
+  padding: "24px",
+  borderRadius: "28px",
+  background:
+    "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(5,46,22,0.96) 100%)",
+  border: "1px solid rgba(16,185,129,0.24)",
+  boxShadow: "0 22px 50px rgba(0,0,0,0.32)",
+};
+
+const planMiniStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 14px",
+  borderRadius: "999px",
+  background: "rgba(59,130,246,0.12)",
+  border: "1px solid rgba(59,130,246,0.16)",
+  color: "#bfdbfe",
+  fontSize: "12px",
+  fontWeight: 700,
+  marginBottom: "14px",
+};
+
+const planFeaturedMiniStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 14px",
+  borderRadius: "999px",
+  background: "rgba(16,185,129,0.12)",
+  border: "1px solid rgba(16,185,129,0.20)",
+  color: "#a7f3d0",
+  fontSize: "12px",
+  fontWeight: 700,
+  marginBottom: "14px",
+};
+
+const planTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "30px",
+  fontWeight: 800,
+  color: "#ffffff",
+};
+
+const planPriceStyle: CSSProperties = {
+  fontSize: "48px",
+  fontWeight: 900,
+  color: "#ffffff",
+  marginTop: "10px",
+  lineHeight: 1,
+};
+
+const planTextStyle: CSSProperties = {
+  margin: "14px 0 0",
+  fontSize: "15px",
+  lineHeight: 1.8,
+  color: "#cbd5e1",
+};
+
+const planListStyle: CSSProperties = {
+  display: "grid",
+  gap: "10px",
+  marginTop: "18px",
+};
+
+const planItemStyle: CSSProperties = {
+  padding: "14px 16px",
+  borderRadius: "16px",
+  background: "rgba(15,23,42,0.76)",
+  border: "1px solid rgba(59,130,246,0.12)",
+  color: "#ffffff",
+  fontSize: "14px",
+  fontWeight: 700,
+};
+
+const planObsStyle: CSSProperties = {
+  marginTop: "16px",
+  fontSize: "13px",
+  lineHeight: 1.7,
+  color: "#94a3b8",
+};
+
+const planObsHighlightStyle: CSSProperties = {
+  marginTop: "16px",
+  fontSize: "13px",
+  lineHeight: 1.7,
+  color: "#d1fae5",
+};
+
+const planPrimaryButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  marginTop: "20px",
+  padding: "15px 18px",
+  width: "100%",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+  color: "#ffffff",
+  fontWeight: 800,
+  boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
+  boxSizing: "border-box",
+};
+
+const planFeaturedButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
+  marginTop: "20px",
+  padding: "15px 18px",
+  width: "100%",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+  color: "#ffffff",
+  fontWeight: 800,
+  boxShadow: "0 14px 30px rgba(34,197,94,0.30)",
+  boxSizing: "border-box",
+};
+
+const salesSectionStyle: CSSProperties = {
+  marginBottom: "26px",
+};
+
+const salesCardStyle: CSSProperties = {
   padding: "26px",
   borderRadius: "28px",
   background:
@@ -886,11 +1248,11 @@ const salesCardStyle: React.CSSProperties = {
   boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
 };
 
-const salesTextWrapStyle: React.CSSProperties = {
+const salesTextWrapStyle: CSSProperties = {
   marginBottom: "18px",
 };
 
-const salesMiniStyle: React.CSSProperties = {
+const salesMiniStyle: CSSProperties = {
   display: "block",
   fontSize: "12px",
   color: "#93c5fd",
@@ -900,14 +1262,14 @@ const salesMiniStyle: React.CSSProperties = {
   marginBottom: "8px",
 };
 
-const salesTitleStyle: React.CSSProperties = {
+const salesTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "32px",
   fontWeight: 800,
   color: "#ffffff",
 };
 
-const salesTextStyle: React.CSSProperties = {
+const salesTextStyle: CSSProperties = {
   margin: "12px 0 0",
   fontSize: "15px",
   color: "#cbd5e1",
@@ -915,20 +1277,20 @@ const salesTextStyle: React.CSSProperties = {
   maxWidth: "720px",
 };
 
-const salesGridStyle: React.CSSProperties = {
+const salesGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: "14px",
 };
 
-const salesItemStyle: React.CSSProperties = {
+const salesItemStyle: CSSProperties = {
   padding: "18px",
   borderRadius: "20px",
   background: "rgba(15,23,42,0.86)",
   border: "1px solid rgba(59,130,246,0.12)",
 };
 
-const salesItemTitleStyle: React.CSSProperties = {
+const salesItemTitleStyle: CSSProperties = {
   display: "block",
   fontSize: "18px",
   fontWeight: 800,
@@ -936,18 +1298,18 @@ const salesItemTitleStyle: React.CSSProperties = {
   marginBottom: "8px",
 };
 
-const salesItemTextStyle: React.CSSProperties = {
+const salesItemTextStyle: CSSProperties = {
   margin: 0,
   fontSize: "14px",
   lineHeight: 1.7,
   color: "#cbd5e1",
 };
 
-const ctaSectionStyle: React.CSSProperties = {
+const ctaSectionStyle: CSSProperties = {
   marginTop: "8px",
 };
 
-const ctaCardStyle: React.CSSProperties = {
+const ctaCardStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -961,7 +1323,7 @@ const ctaCardStyle: React.CSSProperties = {
   boxShadow: "0 24px 70px rgba(0,0,0,0.35)",
 };
 
-const ctaMiniStyle: React.CSSProperties = {
+const ctaMiniStyle: CSSProperties = {
   display: "block",
   fontSize: "12px",
   color: "#93c5fd",
@@ -971,14 +1333,14 @@ const ctaMiniStyle: React.CSSProperties = {
   marginBottom: "8px",
 };
 
-const ctaTitleStyle: React.CSSProperties = {
+const ctaTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: "32px",
   fontWeight: 800,
   color: "#ffffff",
 };
 
-const ctaTextStyle: React.CSSProperties = {
+const ctaTextStyle: CSSProperties = {
   margin: "12px 0 0",
   fontSize: "15px",
   color: "#cbd5e1",
@@ -986,13 +1348,13 @@ const ctaTextStyle: React.CSSProperties = {
   maxWidth: "640px",
 };
 
-const ctaButtonsStyle: React.CSSProperties = {
+const ctaButtonsStyle: CSSProperties = {
   display: "flex",
   gap: "10px",
   flexWrap: "wrap",
 };
 
-const ctaPrimaryButtonStyle: React.CSSProperties = {
+const ctaPrimaryButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1005,7 +1367,7 @@ const ctaPrimaryButtonStyle: React.CSSProperties = {
   boxShadow: "0 14px 30px rgba(37,99,235,0.30)",
 };
 
-const ctaGhostBlueButtonStyle: React.CSSProperties = {
+const ctaGhostBlueButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",

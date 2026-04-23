@@ -1,30 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type EmitirNotaBody = {
-  invoiceId?: number | string;
-  clientId?: number | string;
-  partnerCompanyId?: number | string | null;
-  competencyDate?: string;
-  tomadorDocumento?: string;
-  taxCode?: string;
-  serviceCity?: string;
-  serviceValue?: number | string;
-  serviceDescription?: string;
-  cancelKey?: string | null;
-};
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type InvoiceRow = {
+type InvoiceJob = {
   id: number;
-  client_id: number;
+  invoice_id: number;
   partner_company_id: number | null;
-  status: string | null;
-  pdf_url?: string | null;
-  xml_url?: string | null;
-  pdf_path?: string | null;
-  xml_path?: string | null;
-  nfse_key?: string | null;
-  error_message?: string | null;
+  client_id: number;
+  job_type: string;
+  status: "queued" | "processing" | "success" | "error" | "canceled";
+  attempts: number;
+  max_attempts: number;
+  locked_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  cancel_requested: boolean;
+  cancel_requested_at: string | null;
+  error_message: string | null;
+  payload: any;
+  result: any;
+  created_at: string;
+  updated_at: string;
 };
 
 type ClientRow = {
@@ -34,30 +32,17 @@ type ClientRow = {
   emissor_password?: string | null;
   partner_company_id: number | null;
   is_active: boolean | null;
-  is_blocked?: boolean | null;
-  plan_type?: string | null;
-  notes_limit?: number | null;
-  subscription_status?: string | null;
-  last_payment_at?: string | null;
-  subscription_expires_at?: string | null;
 };
 
-type PartnerCompanyRow = {
-  id: number;
-  is_blocked?: boolean | null;
-  payment_status?: string | null;
-  last_payment_at?: string | null;
-  subscription_expires_at?: string | null;
+type WorkerResult = {
+  success: boolean;
+  message?: string | null;
+  nfseKey?: string | null;
+  pdfUrl?: string | null;
+  xmlUrl?: string | null;
+  pdfBase64?: string | null;
+  xmlBase64?: string | null;
 };
-
-type JobRow = {
-  id: number;
-  status: string | null;
-  created_at?: string | null;
-};
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,103 +55,63 @@ const supabaseAdmin = createClient(
   }
 );
 
-function onlyDigits(value: string | number | null | undefined) {
-  return String(value ?? "").replace(/\D/g, "");
+const STALE_JOB_MINUTES = 8;
+const WORKER_TIMEOUT_MS = 1000 * 60 * 6;
+const STORAGE_BUCKET = "nfse-files";
+const NFSE_PORTAL_BASE_URL = "https://www.nfse.gov.br";
+const MAX_PARALLEL_JOBS = 2;
+
+function getSenhaEmissor(cliente: ClientRow) {
+  return String(cliente.emissor_password || cliente.password || "").trim();
 }
 
-function toNumber(value: unknown) {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : NaN;
+function getStaleJobIsoDate() {
+  return new Date(Date.now() - STALE_JOB_MINUTES * 60 * 1000).toISOString();
+}
+
+function normalizarUrlArquivo(valor: string | null | undefined) {
+  const url = String(valor || "").trim();
+  if (!url) return null;
+
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
   }
 
-  const raw = String(value ?? "").trim();
-  if (!raw) return NaN;
-
-  const hasComma = raw.includes(",");
-  const hasDot = raw.includes(".");
-
-  let normalized = raw.replace(/\s/g, "");
-
-  if (hasComma && hasDot) {
-    normalized = normalized.replace(/\./g, "").replace(",", ".");
-  } else if (hasComma) {
-    normalized = normalized.replace(",", ".");
+  if (url.startsWith("/")) {
+    return `${NFSE_PORTAL_BASE_URL}${url}`;
   }
 
-  const num = Number(normalized);
-  return Number.isFinite(num) ? num : NaN;
+  return null;
 }
 
-function getMonthStartIso() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  return start.toISOString();
-}
+async function uploadBase64ToStorage(params: {
+  base64: string | null | undefined;
+  bucket: string;
+  destinationPath: string;
+  contentType: string;
+}) {
+  const { base64, bucket, destinationPath, contentType } = params;
 
-function getEffectiveNotesLimit(
-  planType: string | null | undefined,
-  dbNotesLimit?: number | null
-) {
-  const plano = String(planType || "").trim().toLowerCase();
+  if (!base64) return null;
 
-  if (plano === "full") return 999999;
-  if (plano === "essencial") return 10;
+  const fileBuffer = Buffer.from(base64, "base64");
 
-  if (typeof dbNotesLimit === "number" && Number.isFinite(dbNotesLimit)) {
-    return dbNotesLimit;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(bucket)
+    .upload(destinationPath, fileBuffer, {
+      contentType,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(`Erro ao enviar arquivo para o Storage: ${uploadError.message}`);
   }
 
-  return 0;
-}
+  const { data: publicData } = supabaseAdmin.storage
+    .from(bucket)
+    .getPublicUrl(destinationPath);
 
-function isSubscriptionBlocked(status: string | null | undefined) {
-  const value = String(status || "").trim().toLowerCase();
-
-  if (!value) return false;
-
-  return ["inactive", "expired", "canceled", "cancelled", "blocked"].includes(
-    value
-  );
-}
-
-function isExpiredDate(value: string | null | undefined) {
-  const raw = String(value || "").trim();
-  if (!raw) return false;
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return false;
-
-  return date.getTime() < Date.now();
-}
-
-function isFinalInvoiceSuccess(invoice: InvoiceRow | null | undefined) {
-  if (!invoice) return false;
-
-  const status = String(invoice.status || "").trim().toLowerCase();
-  const hasStatusSuccess = status === "success";
-  const hasNfseKey = Boolean(String(invoice.nfse_key || "").trim());
-
-  return hasStatusSuccess && hasNfseKey;
-}
-
-async function bloquearClientePorVencimento(clientId: number) {
-  return await supabaseAdmin
-    .from("clients")
-    .update({
-      is_blocked: true,
-      subscription_status: "expired",
-    })
-    .eq("id", clientId);
-}
-
-async function bloquearEmpresaPorVencimento(partnerCompanyId: number) {
-  return await supabaseAdmin
-    .from("partner_companies")
-    .update({
-      is_blocked: true,
-      payment_status: "expired",
-    })
-    .eq("id", partnerCompanyId);
+  return publicData?.publicUrl || null;
 }
 
 async function logJob(params: {
@@ -189,655 +134,840 @@ async function logJob(params: {
   }
 }
 
-async function buscarInvoice(invoiceId: number) {
-  const { data, error } = await supabaseAdmin
-    .from("invoices")
-    .select(`
-      id,
-      client_id,
-      partner_company_id,
-      status,
-      pdf_url,
-      xml_url,
-      pdf_path,
-      xml_path,
-      nfse_key,
-      error_message
-    `)
-    .eq("id", invoiceId)
-    .single();
-
-  return {
-    data: (data as InvoiceRow | null) || null,
-    error,
-  };
-}
-
-async function buscarCliente(clientId: number) {
-  const { data, error } = await supabaseAdmin
-    .from("clients")
-    .select(
-      "id, cnpj, password, emissor_password, partner_company_id, is_active, is_blocked, plan_type, notes_limit, subscription_status, last_payment_at, subscription_expires_at"
-    )
-    .eq("id", clientId)
-    .single();
-
-  return {
-    data: (data as ClientRow | null) || null,
-    error,
-  };
-}
-
-async function buscarEmpresaParceira(partnerCompanyId: number) {
-  const { data, error } = await supabaseAdmin
-    .from("partner_companies")
-    .select(
-      "id, is_blocked, payment_status, last_payment_at, subscription_expires_at"
-    )
-    .eq("id", partnerCompanyId)
-    .single();
-
-  return {
-    data: (data as PartnerCompanyRow | null) || null,
-    error,
-  };
-}
-
-async function buscarJobAtivo(invoiceId: number) {
-  const { data, error } = await supabaseAdmin
-    .from("invoice_jobs")
-    .select("id, status, created_at")
-    .eq("invoice_id", invoiceId)
-    .in("status", ["queued", "processing"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return {
-    data: (data as JobRow | null) || null,
-    error,
-  };
-}
-
-async function marcarInvoicePending(invoiceId: number) {
-  return await supabaseAdmin
+async function atualizarInvoiceParaPending(invoiceId: number, mensagem?: string | null) {
+  const { error } = await supabaseAdmin
     .from("invoices")
     .update({
       status: "pending",
-      error_message: null,
-      updated_at: new Date().toISOString(),
+      error_message: mensagem || null,
     })
     .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
-async function marcarInvoiceQueued(invoiceId: number) {
-  return await supabaseAdmin
+async function atualizarInvoiceParaProcessando(invoiceId: number) {
+  const { error } = await supabaseAdmin
     .from("invoices")
     .update({
-      status: "queued",
+      status: "processing",
       error_message: null,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
-async function marcarInvoiceErro(invoiceId: number, mensagem: string) {
-  return await supabaseAdmin
+async function atualizarInvoiceParaErro(invoiceId: number, mensagem: string) {
+  const { error } = await supabaseAdmin
     .from("invoices")
     .update({
       status: "error",
       error_message: mensagem,
-      updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId);
-}
 
-async function contarNotasSuccessDoMes(clientId: number) {
-  const { count, error } = await supabaseAdmin
-    .from("invoices")
-    .select("id", { count: "estimated", head: true })
-    .eq("client_id", clientId)
-    .eq("status", "success")
-    .gte("created_at", getMonthStartIso());
-
-  return {
-    count: count || 0,
-    error,
-  };
-}
-
-async function criarJobEmissao(params: {
-  invoiceId: number;
-  clientId: number;
-  partnerCompanyId: number | null;
-  payload: any;
-}) {
-  const insertPayload = {
-    invoice_id: params.invoiceId,
-    client_id: params.clientId,
-    partner_company_id: params.partnerCompanyId,
-    job_type: "emit_nfse",
-    status: "queued",
-    attempts: 0,
-    max_attempts: 3,
-    locked_at: null,
-    started_at: null,
-    finished_at: null,
-    cancel_requested: false,
-    cancel_requested_at: null,
-    error_message: null,
-    payload: params.payload,
-    result: null,
-    created_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from("invoice_jobs")
-    .insert(insertPayload)
-    .select("id, status, created_at")
-    .single();
-
-  return {
-    data: (data as JobRow | null) || null,
-    error,
-  };
-}
-
-async function dispararProcessamentoFilaEmBackground() {
-  const appUrl =
-    String(process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
-    "https://www.mvp-automacao.com";
-
-  const target = `${appUrl.replace(/\/$/, "")}/api/jobs/process`;
-
-  try {
-    fetch(target, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    }).catch((error) => {
-      console.error("Erro ao disparar processamento da fila:", error);
-    });
-  } catch (error) {
-    console.error("Erro ao iniciar disparo da fila:", error);
+  if (error) {
+    throw new Error(error.message);
   }
 }
 
-export async function POST(request: Request) {
-  let invoiceId: number | null = null;
-  let clientIdParsed = NaN;
-  let partnerCompanyIdParsed = NaN;
+async function atualizarInvoiceParaCancelada(
+  invoiceId: number,
+  mensagem = "Emissão cancelada pelo usuário."
+) {
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "canceled",
+      error_message: mensagem,
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function atualizarInvoiceParaSucesso(invoiceId: number, result: WorkerResult) {
+  const nfseKeyFinal = result?.nfseKey || null;
+
+  const pdfUrlRecebida = String(result?.pdfUrl || "").trim();
+  const xmlUrlRecebida = String(result?.xmlUrl || "").trim();
+
+  let pdfUrlFinal: string | null = null;
+  let xmlUrlFinal: string | null = null;
+  let storageWarning: string | null = null;
+
+  console.log("ATUALIZAR INVOICE PARA SUCESSO:", {
+    invoiceId,
+    nfseKeyFinal,
+    hasPdfBase64: Boolean(result?.pdfBase64),
+    hasXmlBase64: Boolean(result?.xmlBase64),
+    pdfUrlRecebida,
+    xmlUrlRecebida,
+  });
 
   try {
-    const body = (await request.json()) as EmitirNotaBody;
-
-    const invoiceIdParsed = toNumber(body.invoiceId);
-    clientIdParsed = toNumber(body.clientId);
-    partnerCompanyIdParsed = toNumber(body.partnerCompanyId);
-    const serviceValueParsed = toNumber(body.serviceValue);
-
-    const isClienteDiretoPeloBody =
-      body.partnerCompanyId === null ||
-      body.partnerCompanyId === undefined ||
-      String(body.partnerCompanyId).trim() === "";
-
-    invoiceId = Number.isNaN(invoiceIdParsed) ? null : invoiceIdParsed;
-
-    const competencyDate = String(body.competencyDate ?? "").trim();
-    const tomadorDocumento = onlyDigits(body.tomadorDocumento);
-    const taxCode = String(body.taxCode ?? "").trim();
-    const serviceCity = String(body.serviceCity ?? "").trim();
-    const serviceDescription = String(body.serviceDescription ?? "").trim();
-    const cancelKey =
-      String(body.cancelKey ?? "").trim() || (invoiceId ? String(invoiceId) : null);
-
-    if (
-      !invoiceId ||
-      Number.isNaN(clientIdParsed) ||
-      (!isClienteDiretoPeloBody && Number.isNaN(partnerCompanyIdParsed)) ||
-      !competencyDate ||
-      !tomadorDocumento ||
-      !taxCode ||
-      !serviceCity ||
-      !serviceDescription ||
-      Number.isNaN(serviceValueParsed) ||
-      serviceValueParsed <= 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Dados obrigatórios inválidos ou não enviados.",
-        },
-        { status: 400 }
-      );
+    if (result?.pdfBase64) {
+      pdfUrlFinal = await uploadBase64ToStorage({
+        base64: result.pdfBase64,
+        bucket: STORAGE_BUCKET,
+        destinationPath: `invoices/${invoiceId}/danfse-${nfseKeyFinal || invoiceId}.pdf`,
+        contentType: "application/pdf",
+      });
     }
 
-    const { data: invoiceAtual, error: invoiceError } = await buscarInvoice(invoiceId);
-
-    if (invoiceError || !invoiceAtual) {
-      console.error("Invoice não encontrada:", invoiceError);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Registro da nota não encontrado.",
-        },
-        { status: 404 }
-      );
+    if (result?.xmlBase64) {
+      xmlUrlFinal = await uploadBase64ToStorage({
+        base64: result.xmlBase64,
+        bucket: STORAGE_BUCKET,
+        destinationPath: `invoices/${invoiceId}/xml-${nfseKeyFinal || invoiceId}.xml`,
+        contentType: "application/xml",
+      });
     }
 
-    const invoice = invoiceAtual;
+    if (!pdfUrlFinal) {
+      pdfUrlFinal = normalizarUrlArquivo(pdfUrlRecebida);
+    }
 
-    if (isFinalInvoiceSuccess(invoice)) {
-      return NextResponse.json(
-        {
-          success: true,
-          message: "Nota já emitida anteriormente.",
-          status: "success",
-          invoice: {
-            id: invoice.id,
-            status: invoice.status,
-            nfse_key: invoice.nfse_key,
-            pdf_url: invoice.pdf_url,
-            xml_url: invoice.xml_url,
-            pdf_path: invoice.pdf_path,
-            xml_path: invoice.xml_path,
-            error_message: invoice.error_message,
+    if (!xmlUrlFinal) {
+      xmlUrlFinal = normalizarUrlArquivo(xmlUrlRecebida);
+    }
+
+    if (!pdfUrlFinal || !xmlUrlFinal) {
+      storageWarning =
+        "Nota emitida, mas PDF/XML não foram salvos no Storage. URLs do worker vieram vazias ou incompletas.";
+    }
+  } catch (storageError: any) {
+    console.error("Erro ao subir arquivos para o Storage:", storageError);
+
+    pdfUrlFinal = pdfUrlFinal || normalizarUrlArquivo(pdfUrlRecebida);
+    xmlUrlFinal = xmlUrlFinal || normalizarUrlArquivo(xmlUrlRecebida);
+
+    storageWarning =
+      storageError?.message ||
+      "Nota emitida, mas houve erro ao salvar PDF/XML no Storage.";
+  }
+
+  const pdfPathFinal = pdfUrlFinal || null;
+  const xmlPathFinal = xmlUrlFinal || null;
+
+  const { error } = await supabaseAdmin
+    .from("invoices")
+    .update({
+      status: "success",
+      error_message: storageWarning,
+      nfse_key: nfseKeyFinal,
+      pdf_url: pdfUrlFinal,
+      xml_url: xmlUrlFinal,
+      pdf_path: pdfPathFinal,
+      xml_path: xmlPathFinal,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoiceId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    nfseKey: nfseKeyFinal,
+    pdfUrl: pdfUrlFinal,
+    xmlUrl: xmlUrlFinal,
+    pdfPath: pdfPathFinal,
+    xmlPath: xmlPathFinal,
+    warning: storageWarning,
+  };
+}
+
+async function buscarInvoiceStatus(invoiceId: number) {
+  const { data, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, status, nfse_key, pdf_url, xml_url, pdf_path, xml_path, error_message")
+    .eq("id", invoiceId)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as {
+    id: number;
+    status: string | null;
+    nfse_key: string | null;
+    pdf_url: string | null;
+    xml_url: string | null;
+    pdf_path: string | null;
+    xml_path: string | null;
+    error_message: string | null;
+  };
+}
+
+async function liberarJobsTravados() {
+  const staleIso = getStaleJobIsoDate();
+
+  const { data: jobsTravados, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .select("*")
+    .eq("status", "processing")
+    .eq("job_type", "emit_nfse")
+    .lt("locked_at", staleIso);
+
+  if (error) {
+    throw new Error(`Erro ao buscar jobs travados: ${error.message}`);
+  }
+
+  const lista = (jobsTravados as InvoiceJob[] | null) || [];
+
+  for (const job of lista) {
+    const excedeu = Number(job.attempts || 0) >= Number(job.max_attempts || 3);
+
+    if (excedeu) {
+      await supabaseAdmin
+        .from("invoice_jobs")
+        .update({
+          status: "error",
+          finished_at: new Date().toISOString(),
+          locked_at: null,
+          error_message:
+            "Job travado em processamento por tempo excedido. Limite de tentativas atingido.",
+          result: {
+            lastError:
+              "Job travado em processamento por tempo excedido. Limite de tentativas atingido.",
+            staleRecovery: true,
           },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      await atualizarInvoiceParaErro(
+        job.invoice_id,
+        "A emissão falhou após ficar travada em processamento."
+      );
+
+      await logJob({
+        jobId: job.id,
+        invoiceId: job.invoice_id,
+        level: "error",
+        message: "Job travado finalizado como erro por exceder tentativas.",
+        meta: {
+          attempts: job.attempts,
+          max_attempts: job.max_attempts,
+          locked_at: job.locked_at,
         },
-        { status: 200 }
-      );
+      });
+
+      continue;
     }
 
-    if (Number(invoice.client_id) !== clientIdParsed) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "A nota não pertence ao cliente informado.",
+    await supabaseAdmin
+      .from("invoice_jobs")
+      .update({
+        status: "queued",
+        locked_at: null,
+        started_at: null,
+        error_message: "Job recuperado automaticamente após travar em processing.",
+        result: {
+          staleRecovery: true,
+          message: "Job recuperado automaticamente após travar em processing.",
         },
-        { status: 400 }
-      );
-    }
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
 
-    if (
-      !isClienteDiretoPeloBody &&
-      Number(invoice.partner_company_id) !== partnerCompanyIdParsed
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "A nota não pertence à empresa informada.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (isClienteDiretoPeloBody && invoice.partner_company_id !== null) {
-      await marcarInvoiceErro(
-        invoiceId,
-        "Inconsistência de emissão: a nota está vinculada a uma empresa."
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "A nota informada não pertence a um cliente direto.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { data: clienteAtual, error: clientError } = await buscarCliente(clientIdParsed);
-
-    if (clientError || !clienteAtual) {
-      await marcarInvoiceErro(invoiceId, "Cliente não encontrado.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Cliente não encontrado.",
-        },
-        { status: 404 }
-      );
-    }
-
-    const cliente = clienteAtual;
-    const senhaEmissor = String(
-      cliente.emissor_password || cliente.password || ""
-    ).trim();
-    const clienteVinculadoEmpresa = Boolean(cliente.partner_company_id);
-    const partnerCompanyIdEfetivo = clienteVinculadoEmpresa
-      ? Number(cliente.partner_company_id)
-      : null;
-
-    if (clienteVinculadoEmpresa) {
-      if (isClienteDiretoPeloBody) {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Cliente vinculado à empresa não pode emitir como cliente direto."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Este cliente está vinculado a uma empresa parceira.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (Number(cliente.partner_company_id) !== partnerCompanyIdParsed) {
-        await marcarInvoiceErro(invoiceId, "Cliente não pertence à empresa informada.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Cliente não pertence à empresa informada.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (Number(invoice.partner_company_id) !== Number(cliente.partner_company_id)) {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Inconsistência entre nota e empresa do cliente."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "A nota não corresponde à empresa do cliente informado.",
-          },
-          { status: 400 }
-        );
-      }
-    } else {
-      if (!isClienteDiretoPeloBody) {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Cliente direto não pode emitir vinculado a empresa."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Este cliente não pertence a uma empresa parceira.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (invoice.partner_company_id !== null) {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Inconsistência entre nota e cliente direto."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "A nota não corresponde a um cliente direto.",
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (!cliente.is_active) {
-      await marcarInvoiceErro(invoiceId, "Cliente inativo.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Cliente inativo.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!onlyDigits(cliente.cnpj)) {
-      await marcarInvoiceErro(invoiceId, "CNPJ do cliente não encontrado.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "CNPJ do cliente não encontrado.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!senhaEmissor) {
-      await marcarInvoiceErro(invoiceId, "Senha do Emissor Nacional não cadastrada.");
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Senha do Emissor Nacional não cadastrada.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (clienteVinculadoEmpresa) {
-      const { data: empresaAtual, error: empresaError } =
-        await buscarEmpresaParceira(partnerCompanyIdEfetivo!);
-
-      if (empresaError || !empresaAtual) {
-        await marcarInvoiceErro(invoiceId, "Empresa não encontrada.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Empresa não encontrada.",
-          },
-          { status: 404 }
-        );
-      }
-
-      const empresa = empresaAtual;
-      const paymentStatus = String(empresa.payment_status || "")
-        .trim()
-        .toLowerCase();
-
-      const empresaExpirada = isExpiredDate(empresa.subscription_expires_at);
-
-      if (empresaExpirada) {
-        await bloquearEmpresaPorVencimento(empresa.id);
-      }
-
-      if (cliente.is_blocked) {
-        await marcarInvoiceErro(invoiceId, "Cliente bloqueado.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Seu acesso está bloqueado no momento.",
-          },
-          { status: 403 }
-        );
-      }
-
-      if (empresa.is_blocked || empresaExpirada || paymentStatus !== "paid") {
-        await marcarInvoiceErro(
-          invoiceId,
-          "Empresa bloqueada por falta de pagamento."
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            message: "A empresa responsável está com pagamento pendente.",
-          },
-          { status: 403 }
-        );
-      }
-    } else {
-      const clienteExpirado = isExpiredDate(cliente.subscription_expires_at);
-
-      if (clienteExpirado) {
-        await bloquearClientePorVencimento(cliente.id);
-      }
-
-      if (cliente.is_blocked || clienteExpirado) {
-        await marcarInvoiceErro(invoiceId, "Cliente bloqueado por falta de pagamento.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Seu acesso está bloqueado por falta de pagamento.",
-          },
-          { status: 403 }
-        );
-      }
-
-      if (isSubscriptionBlocked(cliente.subscription_status) || clienteExpirado) {
-        await marcarInvoiceErro(invoiceId, "Assinatura inativa ou expirada.");
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Sua assinatura está inativa. Regularize seu plano para emitir.",
-          },
-          { status: 403 }
-        );
-      }
-
-      const limite = getEffectiveNotesLimit(cliente.plan_type, cliente.notes_limit);
-
-      if (limite > 0) {
-        const { count: notasMes, error: notasError } =
-          await contarNotasSuccessDoMes(cliente.id);
-
-        if (notasError) {
-          console.error("Erro ao contar notas do mês:", notasError);
-        } else if (notasMes >= limite) {
-          await marcarInvoiceErro(
-            invoiceId,
-            "Limite mensal de notas atingido para o plano atual."
-          );
-
-          return NextResponse.json(
-            {
-              success: false,
-              message: "Você atingiu o limite mensal de notas do seu plano.",
-            },
-            { status: 403 }
-          );
-        }
-      }
-    }
-
-    const { data: jobAtivo } = await buscarJobAtivo(invoiceId);
-
-    if (jobAtivo) {
-      await marcarInvoiceQueued(invoiceId);
-
-      await dispararProcessamentoFilaEmBackground();
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: "A emissão já está em andamento.",
-          status: jobAtivo.status || "queued",
-          jobId: jobAtivo.id,
-          invoice: {
-            id: invoiceId,
-            status: jobAtivo.status || "queued",
-            nfse_key: invoice.nfse_key || null,
-            pdf_url: invoice.pdf_url || null,
-            xml_url: invoice.xml_url || null,
-            error_message: null,
-          },
-        },
-        { status: 200 }
-      );
-    }
-
-    await marcarInvoicePending(invoiceId);
-
-    const jobPayload = {
-      invoiceId,
-      clientId: clientIdParsed,
-      partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
-      competencyDate,
-      tomadorDocumento,
-      taxCode,
-      serviceCity,
-      serviceValue: serviceValueParsed,
-      serviceDescription,
-      cancelKey,
-    };
-
-    const { data: jobCriado, error: createJobError } = await criarJobEmissao({
-      invoiceId,
-      clientId: clientIdParsed,
-      partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
-      payload: jobPayload,
-    });
-
-    if (createJobError || !jobCriado) {
-      console.error("Erro ao criar job da emissão:", createJobError);
-
-      await marcarInvoiceErro(invoiceId, "Não foi possível enfileirar a emissão.");
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Não foi possível enfileirar a emissão.",
-        },
-        { status: 500 }
-      );
-    }
-
-    await marcarInvoiceQueued(invoiceId);
+    await atualizarInvoiceParaPending(
+      job.invoice_id,
+      "Job recuperado automaticamente após travar em processamento."
+    );
 
     await logJob({
-      jobId: jobCriado.id,
-      invoiceId,
-      level: "info",
-      message: "Job de emissão criado com sucesso.",
+      jobId: job.id,
+      invoiceId: job.invoice_id,
+      level: "warning",
+      message: "Job travado recuperado automaticamente para a fila.",
       meta: {
-        invoiceId,
-        clientId: clientIdParsed,
-        partnerCompanyId: isClienteDiretoPeloBody ? null : partnerCompanyIdParsed,
-        competencyDate,
-        tomadorDocumento,
-        taxCode,
-        serviceCity,
-        serviceValue: serviceValueParsed,
+        attempts: job.attempts,
+        max_attempts: job.max_attempts,
+        locked_at: job.locked_at,
+      },
+    });
+  }
+
+  return lista.length;
+}
+
+async function buscarJobsPendentes(limit = MAX_PARALLEL_JOBS): Promise<InvoiceJob[]> {
+  const { data, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .select("*")
+    .eq("status", "queued")
+    .eq("job_type", "emit_nfse")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data as InvoiceJob[] | null) || [];
+}
+
+async function travarJob(jobId: number) {
+  const agora = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .update({
+      status: "processing",
+      locked_at: agora,
+      started_at: agora,
+      updated_at: agora,
+    })
+    .eq("id", jobId)
+    .eq("status", "queued")
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function incrementarTentativa(job: InvoiceJob) {
+  const proximaTentativa = Number(job.attempts || 0) + 1;
+
+  const { error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .update({
+      attempts: proximaTentativa,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", job.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return proximaTentativa;
+}
+
+async function finalizarJobSucesso(jobId: number, result: any) {
+  const agora = new Date().toISOString();
+
+  const resultPayload = result?.result ?? result ?? null;
+  const errorMessageFinal =
+    resultPayload?.warning ||
+    (resultPayload?.pdfUrl && resultPayload?.xmlUrl
+      ? null
+      : "Arquivos PDF/XML pendentes ou indisponíveis.");
+
+  const { error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .update({
+      status: "success",
+      finished_at: agora,
+      locked_at: null,
+      result: resultPayload,
+      error_message: errorMessageFinal,
+      updated_at: agora,
+    })
+    .eq("id", jobId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function finalizarJobErro(job: InvoiceJob, mensagem: string, result: any = null) {
+  const agora = new Date().toISOString();
+  const excedeu = Number(job.attempts || 0) >= Number(job.max_attempts || 3);
+  const novoStatus = excedeu ? "error" : "queued";
+
+  const { error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .update({
+      status: novoStatus,
+      finished_at: excedeu ? agora : null,
+      locked_at: null,
+      error_message: mensagem,
+      result,
+      updated_at: agora,
+    })
+    .eq("id", job.id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function finalizarJobCancelado(
+  jobId: number,
+  mensagem = "Emissão cancelada pelo usuário."
+) {
+  const agora = new Date().toISOString();
+
+  const { error } = await supabaseAdmin
+    .from("invoice_jobs")
+    .update({
+      status: "canceled",
+      finished_at: agora,
+      locked_at: null,
+      error_message: mensagem,
+      result: { canceled: true, message: mensagem },
+      updated_at: agora,
+    })
+    .eq("id", jobId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function buscarCliente(clientId: number): Promise<ClientRow> {
+  const { data, error } = await supabaseAdmin
+    .from("clients")
+    .select("id, cnpj, password, emissor_password, partner_company_id, is_active")
+    .eq("id", clientId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("Cliente do job não encontrado.");
+  }
+
+  return data as ClientRow;
+}
+
+async function chamarWorkerEmissao(job: InvoiceJob, cliente: ClientRow) {
+  const WORKER_URL = String(process.env.NFSE_WORKER_URL || "").trim();
+
+  if (!WORKER_URL) {
+    throw new Error("NFSE_WORKER_URL não configurado.");
+  }
+
+  const payload = job.payload || {};
+  const senhaEmissor = getSenhaEmissor(cliente);
+
+  if (!cliente.cnpj || !senhaEmissor) {
+    throw new Error("Cliente sem dados fiscais completos para emissão.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, WORKER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${WORKER_URL}/emitir`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "bypass-tunnel-reminder": "1",
+        "User-Agent": "mvp-automacao-worker-client",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        cnpjEmpresa: cliente.cnpj,
+        senhaEmpresa: senhaEmissor,
+        competencyDate: payload.competencyDate,
+        tomadorDocumento: payload.tomadorDocumento,
+        taxCode: payload.taxCode,
+        serviceCity: payload.serviceCity,
+        serviceValue: payload.serviceValue,
+        serviceDescription: payload.serviceDescription,
+        cancelKey: payload.cancelKey || String(job.invoice_id),
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const resultado = (await response.json().catch(() => null)) as WorkerResult | null;
+
+    console.log("RESULTADO WORKER:", {
+      success: resultado?.success,
+      message: resultado?.message,
+      nfseKey: resultado?.nfseKey,
+      hasPdfBase64: Boolean(resultado?.pdfBase64),
+      hasXmlBase64: Boolean(resultado?.xmlBase64),
+      pdfUrl: resultado?.pdfUrl || null,
+      xmlUrl: resultado?.xmlUrl || null,
+    });
+
+    if (!response.ok) {
+      throw new Error(resultado?.message || "Erro ao chamar worker.");
+    }
+
+    return resultado;
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Tempo limite excedido ao aguardar o worker de emissão.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function processarJob(job: InvoiceJob) {
+  await logJob({
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    level: "info",
+    message: "Iniciando processamento do job.",
+    meta: { attempts: job.attempts, max_attempts: job.max_attempts },
+  });
+
+  const payload = job.payload || {};
+
+  if (job.cancel_requested) {
+    await logJob({
+      jobId: job.id,
+      invoiceId: job.invoice_id,
+      level: "warning",
+      message: "Job marcado como cancelado antes do processamento.",
+    });
+
+    await atualizarInvoiceParaCancelada(job.invoice_id);
+    await finalizarJobCancelado(job.id);
+    return {
+      success: false,
+      canceled: true,
+      message: "Job cancelado antes do processamento.",
+    };
+  }
+
+  const cliente = await buscarCliente(job.client_id);
+  const senhaEmissor = getSenhaEmissor(cliente);
+
+  if (!cliente.is_active) {
+    throw new Error("Cliente inativo.");
+  }
+
+  if (!cliente.cnpj || !senhaEmissor) {
+    throw new Error("Cliente sem dados fiscais completos para emissão.");
+  }
+
+  await atualizarInvoiceParaProcessando(job.invoice_id);
+
+  await logJob({
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    level: "info",
+    message: "Chamando worker externo de emissão.",
+    meta: {
+      competencyDate: payload.competencyDate,
+      tomadorDocumento: payload.tomadorDocumento,
+      taxCode: payload.taxCode,
+      serviceCity: payload.serviceCity,
+      serviceValue: payload.serviceValue,
+      workerUrl: process.env.NFSE_WORKER_URL || null,
+    },
+  });
+
+  const resultado = await chamarWorkerEmissao(job, cliente);
+
+  if (!resultado?.success) {
+    const mensagem = resultado?.message || "Falha na automação.";
+
+    if (
+      mensagem.includes("EMISSAO_CANCELADA_USUARIO") ||
+      mensagem.includes("Emissão cancelada pelo usuário.")
+    ) {
+      throw new Error("EMISSAO_CANCELADA_USUARIO");
+    }
+
+    throw new Error(mensagem);
+  }
+
+  if (!resultado.nfseKey) {
+    throw new Error("Nota emitida sem chave de acesso.");
+  }
+
+  const storageResult = await atualizarInvoiceParaSucesso(job.invoice_id, resultado);
+
+  await logJob({
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    level: storageResult.warning ? "warning" : "info",
+    message: storageResult.warning
+      ? "Job processado com sucesso, mas com aviso no storage."
+      : "Job processado com sucesso.",
+    meta: {
+      nfseKey: storageResult.nfseKey,
+      pdfUrl: storageResult.pdfUrl,
+      xmlUrl: storageResult.xmlUrl,
+      pdfPath: storageResult.pdfPath,
+      xmlPath: storageResult.xmlPath,
+      warning: storageResult.warning,
+    },
+  });
+
+  await finalizarJobSucesso(job.id, {
+    success: true,
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    result: {
+      success: true,
+      ...storageResult,
+    },
+  });
+
+  return {
+    success: true,
+    jobId: job.id,
+    invoiceId: job.invoice_id,
+    result: {
+      success: true,
+      ...storageResult,
+    },
+  };
+}
+
+async function processarJobComResultado(job: InvoiceJob) {
+  const travado = await travarJob(job.id);
+
+  if (!travado) {
+    return null;
+  }
+
+  const agora = new Date().toISOString();
+
+  const jobAtualizado: InvoiceJob = {
+    ...job,
+    status: "processing",
+    locked_at: agora,
+    started_at: job.started_at || agora,
+  };
+
+  const attemptsAtual = await incrementarTentativa(jobAtualizado);
+
+  const jobComTentativa: InvoiceJob = {
+    ...jobAtualizado,
+    attempts: attemptsAtual,
+  };
+
+  try {
+    const resultado = await processarJob(jobComTentativa);
+
+    return {
+      processed: 1,
+      success: resultado?.success ? 1 : 0,
+      error: 0,
+      canceled: resultado?.canceled ? 1 : 0,
+      resultado: {
+        jobId: jobComTentativa.id,
+        invoiceId: jobComTentativa.invoice_id,
+        success: Boolean(resultado?.success),
+        canceled: Boolean(resultado?.canceled),
+        message: resultado?.message || null,
+        result: resultado?.result || null,
+      },
+    };
+  } catch (error: any) {
+    const mensagemErro = String(error?.message || "Erro ao processar job.");
+
+    await logJob({
+      jobId: jobComTentativa.id,
+      invoiceId: jobComTentativa.invoice_id,
+      level: "error",
+      message: "Erro ao processar job.",
+      meta: {
+        error: mensagemErro,
+        attempt: jobComTentativa.attempts,
       },
     });
 
-    void dispararProcessamentoFilaEmBackground();
+    if (
+      mensagemErro.includes("EMISSAO_CANCELADA_USUARIO") ||
+      mensagemErro.includes("cancelada pelo usuário")
+    ) {
+      await atualizarInvoiceParaCancelada(
+        jobComTentativa.invoice_id,
+        "Emissão cancelada pelo usuário."
+      );
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Emissão enfileirada com sucesso.",
-        status: "queued",
-        jobId: jobCriado.id,
-        invoice: {
-          id: invoiceId,
-          status: "queued",
-          nfse_key: invoice.nfse_key || null,
-          pdf_url: invoice.pdf_url || null,
-          xml_url: invoice.xml_url || null,
-          error_message: null,
+      await finalizarJobCancelado(
+        jobComTentativa.id,
+        "Emissão cancelada pelo usuário."
+      );
+
+      return {
+        processed: 1,
+        success: 0,
+        error: 0,
+        canceled: 1,
+        resultado: {
+          jobId: jobComTentativa.id,
+          invoiceId: jobComTentativa.invoice_id,
+          success: false,
+          canceled: true,
+          message: "Emissão cancelada pelo usuário.",
         },
-      },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.error("Erro em /api/emitir-nota:", error);
-
-    if (invoiceId) {
-      await marcarInvoiceErro(
-        invoiceId,
-        String(error?.message || "Erro inesperado ao enfileirar emissão.")
-      ).catch(() => null);
+      };
     }
 
+    let invoiceAtual: Awaited<ReturnType<typeof buscarInvoiceStatus>> | null = null;
+
+    try {
+      invoiceAtual = await buscarInvoiceStatus(jobComTentativa.invoice_id);
+    } catch (invoiceReadError) {
+      console.error("Erro ao reler invoice após falha do job:", invoiceReadError);
+    }
+
+    if (invoiceAtual?.nfse_key || invoiceAtual?.status === "success") {
+      await finalizarJobSucesso(jobComTentativa.id, {
+        success: true,
+        jobId: jobComTentativa.id,
+        invoiceId: jobComTentativa.invoice_id,
+        result: {
+          success: true,
+          nfseKey: invoiceAtual.nfse_key,
+          pdfUrl: invoiceAtual.pdf_url,
+          xmlUrl: invoiceAtual.xml_url,
+          pdfPath: invoiceAtual.pdf_path,
+          xmlPath: invoiceAtual.xml_path,
+          warning: invoiceAtual.error_message,
+        },
+      });
+
+      return {
+        processed: 1,
+        success: 1,
+        error: 0,
+        canceled: 0,
+        resultado: {
+          jobId: jobComTentativa.id,
+          invoiceId: jobComTentativa.invoice_id,
+          success: true,
+          canceled: false,
+          message: "Invoice já estava concluída como sucesso após a releitura final.",
+          result: {
+            nfseKey: invoiceAtual.nfse_key,
+            pdfUrl: invoiceAtual.pdf_url,
+            xmlUrl: invoiceAtual.xml_url,
+            pdfPath: invoiceAtual.pdf_path,
+            xmlPath: invoiceAtual.xml_path,
+            warning: invoiceAtual.error_message,
+          },
+        },
+      };
+    }
+
+    const excedeu =
+      Number(jobComTentativa.attempts || 0) >=
+      Number(jobComTentativa.max_attempts || 3);
+
+    if (excedeu) {
+      await atualizarInvoiceParaErro(jobComTentativa.invoice_id, mensagemErro);
+    } else {
+      await atualizarInvoiceParaPending(
+        jobComTentativa.invoice_id,
+        "Tentando novamente a emissão após falha temporária."
+      );
+    }
+
+    await finalizarJobErro(jobComTentativa, mensagemErro, {
+      lastError: mensagemErro,
+      attempt: jobComTentativa.attempts,
+    });
+
+    return {
+      processed: 1,
+      success: 0,
+      error: 1,
+      canceled: 0,
+      resultado: {
+        jobId: jobComTentativa.id,
+        invoiceId: jobComTentativa.invoice_id,
+        success: false,
+        canceled: false,
+        willRetry: !excedeu,
+        message: mensagemErro,
+      },
+    };
+  }
+}
+
+async function executarFila() {
+  const recuperados = await liberarJobsTravados();
+
+  let processedCount = 0;
+  let successCount = 0;
+  let errorCount = 0;
+  let canceledCount = 0;
+  const resultados: any[] = [];
+
+  while (true) {
+    const jobs = await buscarJobsPendentes(MAX_PARALLEL_JOBS);
+
+    if (!jobs.length) {
+      break;
+    }
+
+    const loteResultados = await Promise.all(
+      jobs.map((job) => processarJobComResultado(job))
+    );
+
+    const resultadosValidos = loteResultados.filter(Boolean) as Array<{
+      processed: number;
+      success: number;
+      error: number;
+      canceled: number;
+      resultado: any;
+    }>;
+
+    if (!resultadosValidos.length) {
+      break;
+    }
+
+    for (const item of resultadosValidos) {
+      processedCount += item.processed;
+      successCount += item.success;
+      errorCount += item.error;
+      canceledCount += item.canceled;
+      resultados.push(item.resultado);
+    }
+  }
+
+  return {
+    success: true,
+    processed: processedCount > 0,
+    processedCount,
+    successCount,
+    errorCount,
+    canceledCount,
+    recovered_stale_jobs: recuperados,
+    resultados,
+    message:
+      processedCount > 0
+        ? "Fila processada completamente."
+        : "Nenhum job pendente na fila.",
+  };
+}
+
+export async function POST(_request: NextRequest) {
+  try {
+    const resultado = await executarFila();
+    return NextResponse.json(resultado);
+  } catch (error: any) {
     return NextResponse.json(
       {
         success: false,
-        message: String(error?.message || "Erro inesperado ao enfileirar emissão."),
+        processed: false,
+        message: String(error?.message || "Erro geral ao processar fila."),
       },
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  return POST(request);
 }
