@@ -146,7 +146,7 @@ export default function PlanosPage() {
           </h1>
 
           <p className="planos-subtitle-responsive" style={subtitleStyle}>
-            Assine online, avance para o checkout e ative o sistema conforme a
+            Assine online, avance para o checkout e tenha acesso anual com notas fiscais ilimitadas conforme a
             necessidade da sua operação.
           </p>
         </section>
@@ -187,14 +187,14 @@ export default function PlanosPage() {
               </div>
 
               <h2 style={planTitleStyle}>Essencial</h2>
-              <p style={priceStyle}>R$ 29,90</p>
+              <p style={priceStyle}>R$ 29,90/ano</p>
               <p style={planTextStyle}>
-                Entrada com excelente custo-benefício para quem quer começar com
-                organização.
+                Entrada anual com excelente custo-benefício para quem quer começar com
+                organização e emitir sem limite de notas.
               </p>
 
               <ul style={listStyle}>
-                <li style={listItemStyle}>✔ Até 10 notas por mês</li>
+                <li style={listItemStyle}>✔ Notas fiscais ilimitadas</li>
                 <li style={listItemStyle}>✔ Emissão individual</li>
                 <li style={listItemStyle}>✔ Histórico básico</li>
                 <li style={listItemStyle}>✔ PDF e XML organizados</li>
@@ -221,14 +221,14 @@ export default function PlanosPage() {
               </div>
 
               <h2 style={planTitleStyle}>Full</h2>
-              <p style={priceStyle}>R$ 59,90</p>
+              <p style={priceStyle}>R$ 59,90/ano</p>
               <p style={planTextStyle}>
                 Para quem quer operar com mais liberdade, velocidade e escala no
-                dia a dia fiscal.
+                dia a dia fiscal durante o ano inteiro.
               </p>
 
               <ul style={listStyle}>
-                <li style={listItemStyle}>✔ Notas ilimitadas</li>
+                <li style={listItemStyle}>✔ Notas fiscais ilimitadas</li>
                 <li style={listItemStyle}>✔ Emissão automática completa</li>
                 <li style={listItemStyle}>✔ Dashboard operacional completo</li>
                 <li style={listItemStyle}>✔ Controle centralizado de clientes</li>

@@ -119,19 +119,19 @@ function CheckoutContent() {
   const info = useMemo(() => {
     if (plano === "essencial") {
       return {
-        nome: "Plano Essencial",
+        nome: "Plano Essencial Anual",
         precoNumero: 29.9,
-        precoTexto: "R$ 29,90",
-        descricao: "Até 10 notas por mês",
+        precoTexto: "R$ 29,90/ano",
+        descricao: "Notas fiscais ilimitadas",
       };
     }
 
     if (plano === "full") {
       return {
-        nome: "Plano Full",
+        nome: "Plano Full Anual",
         precoNumero: 59.9,
-        precoTexto: "R$ 59,90",
-        descricao: "Notas ilimitadas",
+        precoTexto: "R$ 59,90/ano",
+        descricao: "Notas fiscais ilimitadas",
       };
     }
 
@@ -488,7 +488,7 @@ function CheckoutContent() {
           </h1>
 
           <p className="checkout-subtitle-responsive" style={subtitleStyle}>
-            Finalize sua assinatura sem sair da MVP_ Automação Fiscal.
+            Finalize sua assinatura anual com segurança dentro da MVP_ Automação Fiscal.
           </p>
 
           <div className="checkout-planbox-responsive" style={planBoxStyle}>
@@ -594,15 +594,15 @@ function CheckoutContent() {
           )}
 
           <div style={infoBoxStyle}>
-            O pagamento será processado de forma segura pelo Mercado Pago dentro
-            do seu checkout.
+            Acesso anual com notas fiscais ilimitadas. O pagamento será processado
+            de forma segura pelo Mercado Pago dentro do seu checkout.
           </div>
         </section>
 
         <section className="checkout-right-responsive" style={rightCardStyle}>
           <div style={summaryHeaderStyle}>
             <h3 style={summaryTitleStyle}>Resumo</h3>
-            <p style={summaryTextStyle}>Revise seu plano antes de pagar.</p>
+            <p style={summaryTextStyle}>Revise seu plano anual antes de pagar.</p>
           </div>
 
           <div style={summaryItemStyle}>

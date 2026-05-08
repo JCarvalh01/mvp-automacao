@@ -152,7 +152,7 @@ export default function EditarEmpresaPage() {
 
       const basePriceNumero = normalizarNumero(basePrice);
       if (basePrice.trim() && basePriceNumero === null) {
-        setMensagem("Base mensal inválida.");
+        setMensagem("Valor base negociado inválido.");
         setSalvando(false);
         return;
       }
@@ -337,7 +337,7 @@ export default function EditarEmpresaPage() {
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Limite de clientes</label>
+                <label style={labelStyle}>Capacidade de clientes</label>
                 <input
                   type="number"
                   min="0"
@@ -349,21 +349,21 @@ export default function EditarEmpresaPage() {
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Valor por cliente (R$)</label>
+                <label style={labelStyle}>Valor por cliente ativo (se houver)</label>
                 <input
                   value={pricePerClient}
                   onChange={(e) => setPricePerClient(e.target.value)}
-                  placeholder="Ex: 7 ou 7,00"
+                  placeholder="Ex: 10 ou 15,00"
                   style={inputStyle}
                 />
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Base mensal (R$)</label>
+                <label style={labelStyle}>Base negociada (R$)</label>
                 <input
                   value={basePrice}
                   onChange={(e) => setBasePrice(e.target.value)}
-                  placeholder="Ex: 30 ou 30,00"
+                  placeholder="Ex: 297 ou 997,00"
                   style={inputStyle}
                 />
               </div>

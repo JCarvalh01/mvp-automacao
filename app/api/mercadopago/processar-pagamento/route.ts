@@ -21,20 +21,25 @@ type Plano = "essencial" | "full";
 function getPlanoData(plano: Plano) {
   if (plano === "essencial") {
     return {
-      title: "Plano Essencial - MVP Automação Fiscal",
+      title: "Plano Essencial Anual - MVP Automação Fiscal",
       price: 29.9,
     };
   }
 
   return {
-    title: "Plano Full - MVP Automação Fiscal",
+    title: "Plano Full Anual - MVP Automação Fiscal",
     price: 59.9,
   };
 }
 
-function parseExternalReference(externalReference: string | null | undefined) {
+function parseExternalReference(
+  externalReference: string | null | undefined
+) {
   const value = String(externalReference || "").trim();
-  const match = value.match(/^client_(\d+)_(essencial|full)$/);
+
+  const match = value.match(
+    /^client_(\d+)_(essencial|full)$/
+  );
 
   if (!match) {
     return null;
@@ -50,7 +55,7 @@ function getPlanoUpdate(plano: Plano) {
   if (plano === "essencial") {
     return {
       plan_type: "essencial",
-      notes_limit: 10,
+      notes_limit: null,
       is_blocked: false,
       subscription_status: "active",
     };
@@ -58,7 +63,7 @@ function getPlanoUpdate(plano: Plano) {
 
   return {
     plan_type: "full",
-    notes_limit: 999999,
+    notes_limit: null,
     is_blocked: false,
     subscription_status: "active",
   };
@@ -70,6 +75,7 @@ function isPix(paymentMethodId: string) {
 
 function isTicket(paymentMethodId: string) {
   const value = paymentMethodId.toLowerCase();
+
   return (
     value === "bolbradesco" ||
     value === "pec" ||
@@ -97,40 +103,75 @@ function buildWebhookUrl(appUrl: string) {
 async function liberarPlanoSeAprovado(
   externalReference: string | null | undefined
 ) {
-  const parsed = parseExternalReference(externalReference);
+  const parsed = parseExternalReference(
+    externalReference
+  );
 
-  console.log("PROCESSAR externalReference:", externalReference);
+  console.log(
+    "PROCESSAR externalReference:",
+    externalReference
+  );
+
   console.log("PROCESSAR parsed:", parsed);
 
   if (!parsed) {
-    return { updated: false, reason: "external_reference inválida" };
+    return {
+      updated: false,
+      reason: "external_reference inválida",
+    };
   }
 
   const planoUpdate = getPlanoUpdate(parsed.plano);
 
+  const agora = new Date();
+
+  const vencimento = new Date();
+
+  vencimento.setFullYear(
+    vencimento.getFullYear() + 1
+  );
+
   const { error } = await supabaseAdmin
     .from("clients")
-    .update(planoUpdate)
+    .update({
+      ...planoUpdate,
+      last_payment_at: agora.toISOString(),
+      subscription_expires_at:
+        vencimento.toISOString(),
+    })
     .eq("id", parsed.clientId);
 
   if (error) {
-    console.log("PROCESSAR erro ao liberar plano imediatamente:", error);
-    return { updated: false, reason: error.message || "erro update" };
+    console.log(
+      "PROCESSAR erro ao liberar plano imediatamente:",
+      error
+    );
+
+    return {
+      updated: false,
+      reason: error.message || "erro update",
+    };
   }
 
-  return { updated: true };
+  return {
+    updated: true,
+  };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const accessToken =
+      process.env.MERCADO_PAGO_ACCESS_TOKEN;
+
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL;
 
     if (!accessToken) {
       return NextResponse.json(
         {
           success: false,
-          message: "MERCADO_PAGO_ACCESS_TOKEN não configurado.",
+          message:
+            "MERCADO_PAGO_ACCESS_TOKEN não configurado.",
         },
         { status: 500 }
       );
@@ -140,23 +181,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "NEXT_PUBLIC_APP_URL não configurado.",
+          message:
+            "NEXT_PUBLIC_APP_URL não configurado.",
         },
         { status: 500 }
       );
     }
 
     const webhookUrl = buildWebhookUrl(appUrl);
+
     const body = await request.json();
 
-    const token = String(body?.token || "").trim();
-    const issuerId = body?.issuer_id ? String(body?.issuer_id).trim() : null;
-    const paymentMethodId = String(body?.payment_method_id || "").trim();
-    const transactionAmount = Number(body?.transaction_amount);
-    const installments = Number(body?.installments || 1);
-    const payerEmail = String(body?.payer?.email || "").trim();
+    const token = String(
+      body?.token || ""
+    ).trim();
+
+    const issuerId = body?.issuer_id
+      ? String(body?.issuer_id).trim()
+      : null;
+
+    const paymentMethodId = String(
+      body?.payment_method_id || ""
+    ).trim();
+
+    const transactionAmount = Number(
+      body?.transaction_amount
+    );
+
+    const installments = Number(
+      body?.installments || 1
+    );
+
+    const payerEmail = String(
+      body?.payer?.email || ""
+    ).trim();
+
     const clientId = Number(body?.clientId);
-    const plano = String(body?.plano || "").trim() as Plano;
+
+    const plano = String(
+      body?.plano || ""
+    ).trim() as Plano;
 
     console.log(
       "PROCESSAR body:",
@@ -175,68 +239,119 @@ export async function POST(request: NextRequest) {
 
     if (!clientId || Number.isNaN(clientId)) {
       return NextResponse.json(
-        { success: false, message: "Cliente inválido." },
+        {
+          success: false,
+          message: "Cliente inválido.",
+        },
         { status: 400 }
       );
     }
 
-    if (plano !== "essencial" && plano !== "full") {
+    if (
+      plano !== "essencial" &&
+      plano !== "full"
+    ) {
       return NextResponse.json(
-        { success: false, message: "Plano inválido." },
+        {
+          success: false,
+          message: "Plano inválido.",
+        },
         { status: 400 }
       );
     }
 
     if (!paymentMethodId) {
       return NextResponse.json(
-        { success: false, message: "Método de pagamento inválido." },
+        {
+          success: false,
+          message:
+            "Método de pagamento inválido.",
+        },
         { status: 400 }
       );
     }
 
     if (!payerEmail) {
       return NextResponse.json(
-        { success: false, message: "E-mail do pagador não informado." },
+        {
+          success: false,
+          message:
+            "E-mail do pagador não informado.",
+        },
         { status: 400 }
       );
     }
 
-    if (!Number.isFinite(transactionAmount) || transactionAmount <= 0) {
+    if (
+      !Number.isFinite(transactionAmount) ||
+      transactionAmount <= 0
+    ) {
       return NextResponse.json(
-        { success: false, message: "Valor inválido para pagamento." },
+        {
+          success: false,
+          message:
+            "Valor inválido para pagamento.",
+        },
         { status: 400 }
       );
     }
 
     const planoData = getPlanoData(plano);
+
     const externalReference = `client_${clientId}_${plano}`;
 
-    const paymentPayload: Record<string, any> = {
+    const paymentPayload: Record<
+      string,
+      any
+    > = {
       transaction_amount: transactionAmount,
+
       description: planoData.title,
+
       payment_method_id: paymentMethodId,
+
       installments:
-        Number.isFinite(installments) && installments > 0 ? installments : 1,
+        Number.isFinite(installments) &&
+        installments > 0
+          ? installments
+          : 1,
+
       payer: {
         email: payerEmail,
       },
-      external_reference: externalReference,
+
+      external_reference:
+        externalReference,
+
       notification_url: webhookUrl,
-      statement_descriptor: "MVP AUTOMACAO",
+
+      statement_descriptor:
+        "MVP AUTOMACAO",
+
       metadata: {
         clientId,
         plano,
         externalReference,
-        origem: "mvp_automacao_fiscal",
+        origem:
+          "mvp_automacao_fiscal",
       },
     };
 
-    if (token && !isPix(paymentMethodId) && !isTicket(paymentMethodId)) {
+    if (
+      token &&
+      !isPix(paymentMethodId) &&
+      !isTicket(paymentMethodId)
+    ) {
       paymentPayload.token = token;
     }
 
-    if (issuerId && !isPix(paymentMethodId) && !isTicket(paymentMethodId)) {
-      paymentPayload.issuer_id = issuerId;
+    if (
+      issuerId &&
+      !isPix(paymentMethodId) &&
+      !isTicket(paymentMethodId)
+    ) {
+      paymentPayload.issuer_id =
+        issuerId;
     }
 
     console.log(
@@ -250,21 +365,41 @@ export async function POST(request: NextRequest) {
         .toString(36)
         .slice(2)}`;
 
-    const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "X-Idempotency-Key": idempotencyKey,
-      },
-      body: JSON.stringify(paymentPayload),
-      cache: "no-store",
-    });
+    const mpResponse = await fetch(
+      "https://api.mercadopago.com/v1/payments",
+      {
+        method: "POST",
 
-    const paymentResult = await mpResponse.json();
+        headers: {
+          "Content-Type":
+            "application/json",
 
-    console.log("PROCESSAR mpResponse.status:", mpResponse.status);
-    console.log("PROCESSAR paymentResult:", JSON.stringify(paymentResult));
+          Authorization: `Bearer ${accessToken}`,
+
+          "X-Idempotency-Key":
+            idempotencyKey,
+        },
+
+        body: JSON.stringify(
+          paymentPayload
+        ),
+
+        cache: "no-store",
+      }
+    );
+
+    const paymentResult =
+      await mpResponse.json();
+
+    console.log(
+      "PROCESSAR mpResponse.status:",
+      mpResponse.status
+    );
+
+    console.log(
+      "PROCESSAR paymentResult:",
+      JSON.stringify(paymentResult)
+    );
 
     if (!mpResponse.ok) {
       return NextResponse.json(
@@ -274,49 +409,88 @@ export async function POST(request: NextRequest) {
             paymentResult?.message ||
             paymentResult?.error ||
             "Erro ao processar pagamento.",
+
           details: paymentResult,
         },
         { status: 500 }
       );
     }
 
-    const status = String(paymentResult?.status || "").toLowerCase();
-    const statusDetail = String(paymentResult?.status_detail || "");
+    const status = String(
+      paymentResult?.status || ""
+    ).toLowerCase();
+
+    const statusDetail = String(
+      paymentResult?.status_detail || ""
+    );
 
     let liberacaoImediata: any = null;
 
     if (status === "approved") {
-      liberacaoImediata = await liberarPlanoSeAprovado(
-        paymentResult?.external_reference
+      liberacaoImediata =
+        await liberarPlanoSeAprovado(
+          paymentResult?.external_reference
+        );
+
+      console.log(
+        "PROCESSAR liberacaoImediata:",
+        liberacaoImediata
       );
-      console.log("PROCESSAR liberacaoImediata:", liberacaoImediata);
     }
 
     return NextResponse.json({
       success: true,
+
       status,
+
       status_detail: statusDetail,
+
       id: paymentResult?.id || null,
-      external_reference: paymentResult?.external_reference || null,
-      metadata: paymentResult?.metadata || null,
-      notification_url: webhookUrl,
-      liberacao_imediata: liberacaoImediata,
-      qr_code:
-        paymentResult?.point_of_interaction?.transaction_data?.qr_code || null,
-      qr_code_base64:
-        paymentResult?.point_of_interaction?.transaction_data?.qr_code_base64 ||
+
+      external_reference:
+        paymentResult?.external_reference ||
         null,
+
+      metadata:
+        paymentResult?.metadata || null,
+
+      notification_url: webhookUrl,
+
+      liberacao_imediata:
+        liberacaoImediata,
+
+      qr_code:
+        paymentResult
+          ?.point_of_interaction
+          ?.transaction_data?.qr_code ||
+        null,
+
+      qr_code_base64:
+        paymentResult
+          ?.point_of_interaction
+          ?.transaction_data
+          ?.qr_code_base64 || null,
+
       ticket_url:
-        paymentResult?.transaction_details?.external_resource_url || null,
+        paymentResult
+          ?.transaction_details
+          ?.external_resource_url ||
+        null,
     });
   } catch (error: any) {
-    console.log("PROCESSAR erro inesperado:", error);
+    console.log(
+      "PROCESSAR erro inesperado:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        message: "Erro inesperado ao processar pagamento.",
-        details: error?.message || null,
+        message:
+          "Erro inesperado ao processar pagamento.",
+
+        details:
+          error?.message || null,
       },
       { status: 500 }
     );
@@ -327,7 +501,8 @@ export async function GET() {
   return NextResponse.json(
     {
       success: false,
-      message: "Método GET não permitido nesta rota.",
+      message:
+        "Método GET não permitido nesta rota.",
     },
     { status: 405 }
   );

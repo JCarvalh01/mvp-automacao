@@ -381,7 +381,7 @@ export default function HomePage() {
                     lineHeight: isMobile ? 1.05 : 1,
                   }}
                 >
-                  R$ 29,90
+                  R$ 29,90/ano
                 </div>
                 <p style={planDescriptionStyle}>
                   Ideal para quem quer começar com mais organização e controle no
@@ -390,7 +390,7 @@ export default function HomePage() {
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ 10 notas fiscais por mês</div>
+                <div style={planItemStyle}>✔ Notas fiscais ilimitadas</div>
                 <div style={planItemStyle}>✔ Emissão rápida e simplificada</div>
                 <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
                 <div style={planItemStyle}>✔ PDF e XML das notas geradas</div>
@@ -428,7 +428,7 @@ export default function HomePage() {
                     lineHeight: isMobile ? 1.05 : 1,
                   }}
                 >
-                  R$ 59,90
+                  R$ 59,90/ano
                 </div>
                 <p style={planDescriptionStyle}>
                   Para quem quer escalar a operação fiscal com mais controle,
@@ -479,20 +479,22 @@ export default function HomePage() {
                     color: "#bfdbfe",
                   }}
                 >
-                  R$ 30/mês + R$ 7 por cliente ativo
+                  Plano personalizado
                 </div>
                 <p style={planDescriptionStyle}>
-                  Perfeito para empresas parceiras e escritórios que gerenciam
-                  vários clientes com operação centralizada.
+                  Perfeito para contabilidades, escritórios fiscais e empresas que gerenciam
+                  múltiplos clientes em uma operação centralizada.
                 </p>
               </div>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Emissão individual</div>
-                <div style={planItemStyle}>✔ Emissão em massa</div>
-                <div style={planItemStyle}>✔ Dashboard operacional</div>
-                <div style={planItemStyle}>✔ Múltiplos clientes</div>
-                <div style={planItemStyle}>✔ Controle dos clientes</div>
+                <div style={planItemStyle}>✔ Gestão de múltiplos clientes</div>
+                <div style={planItemStyle}>✔ Emissão individual e em massa</div>
+                <div style={planItemStyle}>✔ Dashboard operacional avançado</div>
+                <div style={planItemStyle}>✔ Controle centralizado da operação</div>
+                <div style={planItemStyle}>✔ Histórico completo de emissões</div>
+                <div style={planItemStyle}>✔ Suporte prioritário</div>
+                <div style={planItemStyle}>✔ Ambiente empresarial</div>
               </div>
               <a
                 href={whatsappParceiroLink}
@@ -500,7 +502,7 @@ export default function HomePage() {
                 rel="noopener noreferrer"
                 style={planButtonStyle}
               >
-                Falar com o consultor
+                Solicitar demonstração
               </a>
             </article>
           </div>
@@ -636,7 +638,7 @@ export default function HomePage() {
                   width: isMobile ? "100%" : "auto",
                 }}
               >
-                Falar com o administrador
+                Solicitar demonstração
               </a>
             </div>
           </div>

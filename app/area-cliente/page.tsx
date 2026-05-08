@@ -196,7 +196,7 @@ export default function AreaClientePage() {
         client_type: clienteDb.client_type || session.client_type || "mei",
         mei_created_at: clienteDb.mei_created_at || session.mei_created_at || null,
         plan_type: clienteDb.plan_type || null,
-        notes_limit: clienteDb.notes_limit ?? 0,
+        notes_limit: clienteDb.notes_limit ?? null,
         is_blocked: clienteDb.is_blocked ?? false,
         subscription_status: clienteDb.subscription_status ?? null,
         partner_company_id: clienteDb.partner_company_id ?? null,
@@ -266,7 +266,7 @@ export default function AreaClientePage() {
 
     return {
       usadas: notasMes.length,
-      limite: ehClienteEmpresa ? 999999 : Number(cliente.notes_limit || 0),
+      limite: null,
       plano: ehClienteEmpresa ? "empresa" : cliente.plan_type || null,
       bloqueado: Boolean(cliente.is_blocked),
       ehClienteEmpresa,
@@ -296,13 +296,6 @@ export default function AreaClientePage() {
     if (!usoPlano.plano || usoPlano.plano === "free") {
       alert("Escolha um plano antes de emitir.");
       window.location.href = "/planos";
-      return;
-    }
-
-    if (usoPlano.limite > 0 && usoPlano.usadas >= usoPlano.limite) {
-      alert(
-        "Você atingiu o limite mensal do seu plano. Faça upgrade para continuar emitindo."
-      );
       return;
     }
 
@@ -370,27 +363,19 @@ export default function AreaClientePage() {
       return "Escolha um plano para começar a emitir";
     }
 
-    if (usoPlano.limite > 0 && usoPlano.usadas >= usoPlano.limite) {
-      return "Você atingiu o limite do seu plano";
-    }
-
-    return `Plano ${getPlanoLabel(usoPlano.plano)} ativo`;
+    return `Plano ${getPlanoLabel(usoPlano.plano)} ativo com notas ilimitadas`;
   }, [usoPlano]);
 
   const textoUsoPlano = useMemo(() => {
     if (!usoPlano) return "-";
 
     if (usoPlano.ehClienteEmpresa) {
-      return `${usoPlano.usadas} / ∞`;
+      return `${usoPlano.usadas} emitidas / ilimitado`;
     }
 
     if (!usoPlano.plano || usoPlano.plano === "free") return "Sem plano";
 
-    if (usoPlano.limite === 999999) {
-      return `${usoPlano.usadas} / ∞`;
-    }
-
-    return `${usoPlano.usadas} / ${usoPlano.limite}`;
+    return `${usoPlano.usadas} emitidas / ilimitado`;
   }, [usoPlano]);
 
   const whatsappLink = `https://wa.me/5511982966310?text=${encodeURIComponent(
@@ -497,7 +482,7 @@ export default function AreaClientePage() {
               </div>
 
               <div style={heroInfoCardStyle}>
-                <span style={heroInfoLabelStyle}>Uso mensal</span>
+                <span style={heroInfoLabelStyle}>Uso do plano</span>
                 <strong style={heroInfoValueStyle}>{textoUsoPlano}</strong>
               </div>
             </div>
@@ -687,9 +672,9 @@ export default function AreaClientePage() {
         <section style={planoStatusPanelStyle}>
           <div style={planoStatusHeaderStyle}>
             <div>
-              <h2 style={panelTitleStyle}>Plano e limite</h2>
+              <h2 style={panelTitleStyle}>Plano e acesso</h2>
               <p style={panelSubtitleStyle}>
-                Acompanhe o status atual da sua assinatura e o consumo do mês.
+                Acompanhe o status atual da sua assinatura e o acesso ilimitado às emissões.
               </p>
             </div>
 
@@ -730,14 +715,12 @@ export default function AreaClientePage() {
             </div>
 
             <div style={planoStatusCardStyle}>
-              <span style={noteInfoLabelStyle}>Uso mensal</span>
+              <span style={noteInfoLabelStyle}>Uso do plano</span>
               <strong style={planoStatusValueStyle}>{textoUsoPlano}</strong>
               <span style={metricHintStyle}>
                 {cliente?.partner_company_id
                   ? "Cliente de empresa com emissão liberada pela empresa."
-                  : usoPlano?.limite === 999999
-                  ? "Plano com emissão ilimitada."
-                  : "Quantidade usada no mês atual."}
+                  : "Plano com notas fiscais ilimitadas."}
               </span>
             </div>
 

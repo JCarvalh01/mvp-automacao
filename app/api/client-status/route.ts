@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("clients")
       .select(
-        "id, plan_type, notes_limit, is_blocked, subscription_status, partner_company_id, is_active"
+        "id, plan_type, is_blocked, subscription_status, partner_company_id, is_active, subscription_expires_at"
       )
       .eq("id", clientId)
       .maybeSingle();
@@ -74,21 +74,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const isDirectClient =
+      data.partner_company_id === null ||
+      data.partner_company_id === undefined;
+
+    const planType = String(data.plan_type || "").toLowerCase();
+
+    const hasValidPlan =
+      planType === "essencial" || planType === "full";
+
+    const isPartnerClient = !isDirectClient;
+
+    const isActiveClient =
+      Boolean(data.is_active) &&
+      !Boolean(data.is_blocked) &&
+      (isPartnerClient ||
+        (hasValidPlan && String(data.subscription_status || "").toLowerCase() === "active"));
+
     return NextResponse.json(
       {
         success: true,
         id: data.id,
         plan_type: data.plan_type || null,
-        notes_limit: data.notes_limit ?? null,
         is_blocked: Boolean(data.is_blocked),
         subscription_status: data.subscription_status || null,
-        partner_company_id:
-          data.partner_company_id === null || data.partner_company_id === undefined
-            ? null
-            : Number(data.partner_company_id),
+        subscription_expires_at: data.subscription_expires_at || null,
+        partner_company_id: isDirectClient
+          ? null
+          : Number(data.partner_company_id),
         is_active: Boolean(data.is_active),
-        is_direct_client:
-          data.partner_company_id === null || data.partner_company_id === undefined,
+        is_direct_client: isDirectClient,
+        is_partner_client: isPartnerClient,
+        has_valid_plan: hasValidPlan,
+        can_emit: isActiveClient,
+        notes_limit: null,
       },
       { status: 200 }
     );

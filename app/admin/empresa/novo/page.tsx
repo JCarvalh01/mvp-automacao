@@ -69,8 +69,8 @@ export default function NovaEmpresaPage() {
   const [endereco, setEndereco] = useState("");
   const [senha, setSenha] = useState("");
 
-  const [basePrice, setBasePrice] = useState("30,00");
-  const [pricePerClient, setPricePerClient] = useState("7,00");
+  const [basePrice, setBasePrice] = useState("");
+  const [pricePerClient, setPricePerClient] = useState("");
   const [clientsLimit, setClientsLimit] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -183,8 +183,8 @@ export default function NovaEmpresaPage() {
             user_id: usuario.id,
             payment_status: "unpaid",
             is_blocked: false,
-            base_price: parseMoney(basePrice),
-            price_per_client: parseMoney(pricePerClient),
+            base_price: basePrice.trim() ? parseMoney(basePrice) : null,
+            price_per_client: pricePerClient.trim() ? parseMoney(pricePerClient) : null,
             clients_limit: clientsLimit.trim() ? Number(clientsLimit) : null,
           },
         ])
@@ -344,9 +344,9 @@ export default function NovaEmpresaPage() {
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Base mensal</label>
+                <label style={labelStyle}>Base negociada</label>
                 <input
-                  placeholder="30,00"
+                  placeholder="Ex: 997,00 ou sob consulta"
                   value={basePrice}
                   onChange={(e) => setBasePrice(e.target.value)}
                   style={inputStyle}
@@ -354,9 +354,9 @@ export default function NovaEmpresaPage() {
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Valor por cliente</label>
+                <label style={labelStyle}>Valor por cliente ativo (se houver)</label>
                 <input
-                  placeholder="7,00"
+                  placeholder="Ex: 10,00 ou personalizado"
                   value={pricePerClient}
                   onChange={(e) => setPricePerClient(e.target.value)}
                   style={inputStyle}
@@ -364,11 +364,11 @@ export default function NovaEmpresaPage() {
               </div>
 
               <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Limite de clientes</label>
+                <label style={labelStyle}>Capacidade de clientes</label>
                 <input
                   type="number"
                   min="0"
-                  placeholder="Opcional"
+                  placeholder="Personalizado"
                   value={clientsLimit}
                   onChange={(e) => setClientsLimit(e.target.value)}
                   style={inputStyle}

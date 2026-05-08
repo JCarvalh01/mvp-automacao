@@ -151,7 +151,7 @@ export default function AdminPage() {
 
       const hoje = new Date();
       const proximoVencimento = new Date(hoje);
-      proximoVencimento.setDate(proximoVencimento.getDate() + 30);
+      proximoVencimento.setFullYear(proximoVencimento.getFullYear() + 1);
 
       const payload: Partial<Empresa> = {
         payment_status: "paid",
@@ -177,7 +177,7 @@ export default function AdminPage() {
         )
       );
 
-      setMensagem("Empresa marcada como paga com sucesso.");
+      setMensagem("Empresa marcada como paga com sucesso. Próximo vencimento anual definido.");
     } catch (error) {
       console.log("Erro inesperado ao marcar empresa como paga:", error);
       setMensagem("Erro inesperado ao atualizar pagamento da empresa.");
@@ -529,23 +529,23 @@ export default function AdminPage() {
                       </div>
 
                       <div style={infoBoxStyle}>
-                        <span style={infoLabelStyle}>Base mensal</span>
+                        <span style={infoLabelStyle}>Base negociada</span>
                         <strong style={infoValueStyle}>
                           {formatarMoeda(empresa.base_price)}
                         </strong>
                       </div>
 
                       <div style={infoBoxStyle}>
-                        <span style={infoLabelStyle}>Valor por cliente</span>
+                        <span style={infoLabelStyle}>Valor por cliente ativo</span>
                         <strong style={infoValueStyle}>
                           {formatarMoeda(empresa.price_per_client)}
                         </strong>
                       </div>
 
                       <div style={infoBoxStyle}>
-                        <span style={infoLabelStyle}>Limite de clientes</span>
+                        <span style={infoLabelStyle}>Capacidade de clientes</span>
                         <strong style={infoValueStyle}>
-                          {empresa.clients_limit ?? "Não definido"}
+                          {empresa.clients_limit ?? "Personalizado"}
                         </strong>
                       </div>
 

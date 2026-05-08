@@ -222,14 +222,14 @@ function getPlanoTexto(cliente: Cliente | null) {
   if (plano === "essencial") {
     return {
       titulo: "Plano Essencial",
-      subtitulo: "Limite mensal controlado automaticamente pelo sistema.",
+      subtitulo: "Acesso anual com notas fiscais ilimitadas.",
     };
   }
 
   if (plano === "full") {
     return {
       titulo: "Plano Full",
-      subtitulo: "Plano com emissão ampliada para sua operação.",
+      subtitulo: "Acesso anual com emissão completa e notas fiscais ilimitadas.",
     };
   }
 

@@ -8,13 +8,13 @@ type Plano = "essencial" | "full";
 function getPlanoData(plano: Plano) {
   if (plano === "essencial") {
     return {
-      title: "Plano Essencial - MVP Automação Fiscal",
+      title: "Plano Essencial Anual - MVP Automação Fiscal",
       price: 29.9,
     };
   }
 
   return {
-    title: "Plano Full - MVP Automação Fiscal",
+    title: "Plano Full Anual - MVP Automação Fiscal",
     price: 59.9,
   };
 }
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     const planoData = getPlanoData(plano);
+
     const externalReference = `client_${clientId}_${plano}`;
 
     const payload = {
@@ -81,14 +82,19 @@ export async function POST(request: NextRequest) {
           currency_id: "BRL",
         },
       ],
+
       external_reference: externalReference,
+
       notification_url: `${appUrl}/api/mercadopago/webhook`,
+
       back_urls: {
         success: `${appUrl}/planos?status=success`,
         failure: `${appUrl}/planos?status=failure`,
         pending: `${appUrl}/planos?status=pending`,
       },
+
       auto_return: "approved",
+
       statement_descriptor: "MVP AUTOMACAO",
     };
 

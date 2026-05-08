@@ -441,14 +441,14 @@ export default function OfertaPage() {
             <div style={planCardStyle}>
               <span style={planMiniStyle}>Para começar</span>
               <h3 style={planTitleStyle}>Essencial</h3>
-              <div style={planPriceStyle}>R$ 29,90</div>
+              <div style={planPriceStyle}>R$ 29,90/ano</div>
               <p style={planTextStyle}>
                 Ideal para quem quer sair do manual e começar com mais
                 organização no dia a dia fiscal.
               </p>
 
               <div style={planListStyle}>
-                <div style={planItemStyle}>✔ Até 10 notas por mês</div>
+                <div style={planItemStyle}>✔ Notas fiscais ilimitadas</div>
                 <div style={planItemStyle}>✔ Emissão rápida e simplificada</div>
                 <div style={planItemStyle}>✔ Histórico de notas emitidas</div>
                 <div style={planItemStyle}>✔ PDF e XML organizados</div>
@@ -466,9 +466,9 @@ export default function OfertaPage() {
             </div>
 
             <div style={planFeaturedCardStyle}>
-              <span style={planFeaturedMiniStyle}>Mais completo</span>
+              <span style={planFeaturedMiniStyle}>Mais escolhido</span>
               <h3 style={planTitleStyle}>Full</h3>
-              <div style={planPriceStyle}>R$ 59,90</div>
+              <div style={planPriceStyle}>R$ 59,90/ano</div>
               <p style={planTextStyle}>
                 Para quem quer resolver a operação fiscal de vez, com mais
                 controle, liberdade e visão completa do negócio.

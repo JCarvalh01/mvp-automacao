@@ -371,7 +371,7 @@ export default function AdminEmpresaDetalhePage() {
           </div>
 
           <div style={summaryCardStyle}>
-            <span style={summaryLabelStyle}>Estimativa mensal</span>
+            <span style={summaryLabelStyle}>Estimativa do contrato</span>
             <strong style={summaryValueStyle}>
               {formatarMoeda(resumo.faturamentoEstimado)}
             </strong>
@@ -446,23 +446,23 @@ export default function AdminEmpresaDetalhePage() {
               </div>
 
               <div style={infoBoxStyle}>
-                <span style={infoLabelStyle}>Base mensal</span>
+                <span style={infoLabelStyle}>Base negociada</span>
                 <strong style={infoValueStyle}>
                   {formatarMoeda(empresa?.base_price)}
                 </strong>
               </div>
 
               <div style={infoBoxStyle}>
-                <span style={infoLabelStyle}>Valor por cliente</span>
+                <span style={infoLabelStyle}>Valor por cliente ativo</span>
                 <strong style={infoValueStyle}>
                   {formatarMoeda(empresa?.price_per_client)}
                 </strong>
               </div>
 
               <div style={infoBoxStyle}>
-                <span style={infoLabelStyle}>Limite de clientes</span>
+                <span style={infoLabelStyle}>Capacidade de clientes</span>
                 <strong style={infoValueStyle}>
-                  {empresa?.clients_limit ?? "Não definido"}
+                  {empresa?.clients_limit ?? "Personalizado"}
                 </strong>
               </div>
 

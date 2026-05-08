@@ -233,7 +233,7 @@ function CadastroClientePageContent() {
         user_id: novoUsuario.id,
         partner_company_id: partnerCompanyId,
         plan_type: null,
-        notes_limit: partnerCompanyId ? null : 0,
+        notes_limit: null,
         is_blocked: false,
       };
 

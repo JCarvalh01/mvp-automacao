@@ -18,6 +18,7 @@ type Plano = "essencial" | "full";
 
 function parseExternalReference(externalReference: string | null | undefined) {
   const value = String(externalReference || "").trim();
+
   const match = value.match(/^client_(\d+)_(essencial|full)$/);
 
   if (!match) {
@@ -34,7 +35,7 @@ function getPlanoUpdate(plano: Plano) {
   if (plano === "essencial") {
     return {
       plan_type: "essencial",
-      notes_limit: 10,
+      notes_limit: null,
       is_blocked: false,
       subscription_status: "active",
     };
@@ -42,7 +43,7 @@ function getPlanoUpdate(plano: Plano) {
 
   return {
     plan_type: "full",
-    notes_limit: 999999,
+    notes_limit: null,
     is_blocked: false,
     subscription_status: "active",
   };
@@ -53,11 +54,14 @@ function getNextExpirationDate(baseDate?: string | Date | null) {
 
   if (Number.isNaN(base.getTime())) {
     const fallback = new Date();
-    fallback.setDate(fallback.getDate() + 30);
+
+    fallback.setFullYear(fallback.getFullYear() + 1);
+
     return fallback.toISOString();
   }
 
-  base.setDate(base.getDate() + 30);
+  base.setFullYear(base.getFullYear() + 1);
+
   return base.toISOString();
 }
 
@@ -92,24 +96,37 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.log("WEBHOOK ERRO: Supabase env ausente.");
+
       return NextResponse.json(
-        { success: false, message: "Supabase env ausente." },
+        {
+          success: false,
+          message: "Supabase env ausente.",
+        },
         { status: 500 }
       );
     }
 
     if (!accessToken) {
       console.log("WEBHOOK ERRO: MERCADO_PAGO_ACCESS_TOKEN ausente.");
+
       return NextResponse.json(
-        { success: false, message: "MP token ausente." },
+        {
+          success: false,
+          message: "MP token ausente.",
+        },
         { status: 500 }
       );
     }
 
     const url = new URL(request.url);
-    const topic = url.searchParams.get("topic") || url.searchParams.get("type");
+
+    const topic =
+      url.searchParams.get("topic") ||
+      url.searchParams.get("type");
+
     const idFromQuery =
-      url.searchParams.get("id") || url.searchParams.get("data.id");
+      url.searchParams.get("id") ||
+      url.searchParams.get("data.id");
 
     let body: any = null;
 
@@ -125,14 +142,22 @@ export async function POST(request: NextRequest) {
     console.log("WEBHOOK RECEBIDO BODY:", JSON.stringify(body));
 
     const resourceType = body?.type || topic;
-    const paymentId = body?.data?.id || body?.id || idFromQuery;
+
+    const paymentId =
+      body?.data?.id ||
+      body?.id ||
+      idFromQuery;
 
     console.log("WEBHOOK resourceType:", resourceType);
     console.log("WEBHOOK paymentId:", paymentId);
 
     if (resourceType !== "payment" || !paymentId) {
       console.log("WEBHOOK ignorado: não é payment ou não tem paymentId.");
-      return NextResponse.json({ received: true, ignored: true });
+
+      return NextResponse.json({
+        received: true,
+        ignored: true,
+      });
     }
 
     const paymentResponse = await buscarPagamentoNoMercadoPago(
@@ -140,11 +165,20 @@ export async function POST(request: NextRequest) {
       accessToken
     );
 
-    console.log("WEBHOOK consulta MP status HTTP:", paymentResponse.status);
-    console.log("WEBHOOK consulta MP body:", JSON.stringify(paymentResponse.data));
+    console.log(
+      "WEBHOOK consulta MP status HTTP:",
+      paymentResponse.status
+    );
+
+    console.log(
+      "WEBHOOK consulta MP body:",
+      JSON.stringify(paymentResponse.data)
+    );
 
     if (!paymentResponse.ok) {
-      console.log("WEBHOOK pagamento não encontrado ou ainda não disponível.");
+      console.log(
+        "WEBHOOK pagamento não encontrado ou ainda não disponível."
+      );
 
       return NextResponse.json({
         received: true,
@@ -154,9 +188,13 @@ export async function POST(request: NextRequest) {
     }
 
     const payment = paymentResponse.data;
-    const paymentStatus = String(payment?.status || "").trim().toLowerCase();
+
+    const paymentStatus = String(payment?.status || "")
+      .trim()
+      .toLowerCase();
 
     console.log("WEBHOOK payment.status:", paymentStatus);
+
     console.log(
       "WEBHOOK payment.external_reference:",
       payment?.external_reference
@@ -172,13 +210,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const parsed = parseExternalReference(payment.external_reference);
+    const parsed = parseExternalReference(
+      payment.external_reference
+    );
 
     if (!parsed) {
       console.log(
         "WEBHOOK external_reference inválida:",
         payment?.external_reference
       );
+
       return NextResponse.json({
         received: true,
         ignored: true,
@@ -190,11 +231,14 @@ export async function POST(request: NextRequest) {
     console.log("WEBHOOK parsed plano:", parsed.plano);
 
     const paymentIdValue =
-      payment?.id !== undefined && payment?.id !== null
+      payment?.id !== undefined &&
+      payment?.id !== null
         ? String(payment.id)
         : null;
 
-    const amountValue = Number(payment?.transaction_amount || 0);
+    const amountValue = Number(
+      payment?.transaction_amount || 0
+    );
 
     const paidAtValue = payment?.date_approved
       ? new Date(payment.date_approved).toISOString()
@@ -204,41 +248,53 @@ export async function POST(request: NextRequest) {
       ? new Date(payment.date_created).toISOString()
       : null;
 
-    const paymentDateBase = paidAtValue || createdAtValue || new Date().toISOString();
-    const nextExpirationDate = getNextExpirationDate(paymentDateBase);
+    const paymentDateBase =
+      paidAtValue ||
+      createdAtValue ||
+      new Date().toISOString();
+
+    const nextExpirationDate =
+      getNextExpirationDate(paymentDateBase);
 
     // ======================================================
-    // REGISTRO DO PAGAMENTO NA TABELA payments
+    // REGISTRO DO PAGAMENTO
     // ======================================================
+
     try {
-      const { error: paymentSaveError } = await supabaseAdmin
-        .from("payments")
-        .upsert(
-          {
-            client_id: parsed.clientId,
-            partner_company_id: null,
-            payer_type: "client",
-            provider: "mercado_pago",
-            external_reference: payment?.external_reference || null,
-            payment_id: paymentIdValue,
-            plan_type: parsed.plano,
-            status: paymentStatus,
-            amount: Number.isFinite(amountValue) ? amountValue : 0,
-            paid_at: paidAtValue,
-            webhook_payload: body || null,
-          },
-          {
-            onConflict: "payment_id",
-          }
-        );
+      const { error: paymentSaveError } =
+        await supabaseAdmin
+          .from("payments")
+          .upsert(
+            {
+              client_id: parsed.clientId,
+              partner_company_id: null,
+              payer_type: "client",
+              provider: "mercado_pago",
+              external_reference:
+                payment?.external_reference || null,
+              payment_id: paymentIdValue,
+              plan_type: parsed.plano,
+              status: paymentStatus,
+              amount: Number.isFinite(amountValue)
+                ? amountValue
+                : 0,
+              paid_at: paidAtValue,
+              webhook_payload: body || null,
+            },
+            {
+              onConflict: "payment_id",
+            }
+          );
 
       if (paymentSaveError) {
         console.log(
-          "WEBHOOK erro ao salvar payment na tabela payments:",
+          "WEBHOOK erro ao salvar payment:",
           paymentSaveError
         );
       } else {
-        console.log("WEBHOOK payment salvo/atualizado com sucesso.");
+        console.log(
+          "WEBHOOK payment salvo com sucesso."
+        );
       }
     } catch (paymentInsertError) {
       console.log(
@@ -249,6 +305,7 @@ export async function POST(request: NextRequest) {
 
     if (paymentStatus !== "approved") {
       console.log("WEBHOOK pagamento ainda não aprovado.");
+
       return NextResponse.json({
         received: true,
         payment_status: paymentStatus,
@@ -257,56 +314,33 @@ export async function POST(request: NextRequest) {
 
     const planoUpdate = getPlanoUpdate(parsed.plano);
 
-    const { data: clienteAntes, error: clienteAntesError } = await supabaseAdmin
-      .from("clients")
-      .select(
-        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status, last_payment_at, subscription_expires_at"
-      )
-      .eq("id", parsed.clientId)
-      .maybeSingle();
-
-    console.log("WEBHOOK cliente antes:", JSON.stringify(clienteAntes));
-
-    if (clienteAntesError) {
-      console.log("WEBHOOK erro ao buscar cliente antes:", clienteAntesError);
-    }
-
     const updateClientePayload = {
       ...planoUpdate,
       last_payment_at: paymentDateBase,
       subscription_expires_at: nextExpirationDate,
     };
 
-    const { error: updateError } = await supabaseAdmin
-      .from("clients")
-      .update(updateClientePayload)
-      .eq("id", parsed.clientId);
+    const { error: updateError } =
+      await supabaseAdmin
+        .from("clients")
+        .update(updateClientePayload)
+        .eq("id", parsed.clientId);
 
     if (updateError) {
-      console.log("WEBHOOK erro ao atualizar cliente:", updateError);
+      console.log(
+        "WEBHOOK erro ao atualizar cliente:",
+        updateError
+      );
 
       return NextResponse.json(
         {
           success: false,
           message: "Erro ao atualizar cliente.",
-          details: updateError.message || updateError,
+          details:
+            updateError.message || updateError,
         },
         { status: 500 }
       );
-    }
-
-    const { data: clienteDepois, error: clienteDepoisError } = await supabaseAdmin
-      .from("clients")
-      .select(
-        "id, name, email, plan_type, notes_limit, is_blocked, subscription_status, last_payment_at, subscription_expires_at"
-      )
-      .eq("id", parsed.clientId)
-      .maybeSingle();
-
-    console.log("WEBHOOK cliente depois:", JSON.stringify(clienteDepois));
-
-    if (clienteDepoisError) {
-      console.log("WEBHOOK erro ao buscar cliente depois:", clienteDepoisError);
     }
 
     return NextResponse.json({
@@ -336,8 +370,14 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     url: request.url,
-    has_supabase_url: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-    has_service_role: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    has_mp_token: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN),
+    has_supabase_url: Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL
+    ),
+    has_service_role: Boolean(
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    ),
+    has_mp_token: Boolean(
+      process.env.MERCADO_PAGO_ACCESS_TOKEN
+    ),
   });
 }
