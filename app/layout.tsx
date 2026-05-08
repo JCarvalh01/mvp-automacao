@@ -16,6 +16,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MVP Automação Fiscal",
   description: "Automação fiscal para MEIs e contadores",
+
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -30,15 +36,22 @@ export default function RootLayout({
           src="https://www.googletagmanager.com/gtag/js?id=G-N01VG4GMHC"
           strategy="afterInteractive"
         />
+
         <Script id="google-analytics" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
-            function gtag(){window.dataLayer.push(arguments);}
+
+            function gtag(){
+              window.dataLayer.push(arguments);
+            }
+
             gtag('js', new Date());
+
             gtag('config', 'G-N01VG4GMHC');
           `}
         </Script>
       </head>
+
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
